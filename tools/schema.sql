@@ -1,0 +1,93 @@
+-- ساختار کامل جداول (برای نصب جدید). روی نصب موجود از tools/migrate.php استفاده کنید.
+CREATE TABLE IF NOT EXISTS tenants (
+  id VARCHAR(64) PRIMARY KEY,
+  data LONGTEXT NOT NULL,
+  created_at DATETIME NOT NULL,
+  slug VARCHAR(64) NULL,
+  UNIQUE KEY uq_tenants_slug (slug)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cards (
+  id VARCHAR(64) PRIMARY KEY,
+  tenant_id VARCHAR(64) NOT NULL,
+  requester_name VARCHAR(255) NOT NULL,
+  card_data LONGTEXT NOT NULL,
+  issued_at DATETIME NOT NULL,
+  KEY idx_cards_tenant (tenant_id, issued_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS card_presets (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  preset_key VARCHAR(100) NOT NULL UNIQUE,
+  title VARCHAR(255) NOT NULL,
+  options LONGTEXT NOT NULL,
+  cols LONGTEXT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS global_fonts (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  font_key VARCHAR(64) NOT NULL UNIQUE,
+  font_name VARCHAR(100) NOT NULL,
+  font_url TEXT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS dictionaries (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  lang_code VARCHAR(10) NOT NULL UNIQUE,
+  lang_name VARCHAR(50) NOT NULL,
+  translations LONGTEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS card_templates (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  front_bg LONGTEXT,
+  back_bg LONGTEXT,
+  fields_data LONGTEXT,
+  settings LONGTEXT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS card_validations (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  pattern TEXT NOT NULL,
+  error_msg VARCHAR(500) NOT NULL DEFAULT ''
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS login_attempts (
+  k CHAR(40) PRIMARY KEY,
+  attempts INT NOT NULL DEFAULT 0,
+  locked_until DATETIME NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS card_counters (
+  tenant_id VARCHAR(64) NOT NULL,
+  field_id VARCHAR(64) NOT NULL,
+  next_val BIGINT NOT NULL,
+  PRIMARY KEY (tenant_id, field_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  tenant_id VARCHAR(64) NOT NULL DEFAULT '',
+  actor VARCHAR(20) NOT NULL,
+  action VARCHAR(40) NOT NULL,
+  target VARCHAR(64) NOT NULL DEFAULT '',
+  details TEXT NULL,
+  ip VARCHAR(64) NOT NULL DEFAULT '',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_audit_tenant (tenant_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS webhook_logs (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  tenant_id VARCHAR(64) NOT NULL DEFAULT '',
+  card_id VARCHAR(64) NOT NULL DEFAULT '',
+  url TEXT NOT NULL,
+  http_code INT NOT NULL DEFAULT 0,
+  error VARCHAR(500) NOT NULL DEFAULT '',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_wh_tenant (tenant_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

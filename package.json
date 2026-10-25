@@ -1,0 +1,15 @@
+{
+  "name": "card-platform-superadmin",
+  "private": true,
+  "description": "Build: npm install && npm run build  → assets/app.js + assets/app.css",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2",
+    "jalaali-js": "1.2.7",
+    "jszip": "3.10.1",
+    "tailwindcss": "3.4.17",
+    "vazirmatn": "33.0.3"
+  }
+}

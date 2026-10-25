@@ -1,0 +1,22 @@
+# این پوشه فقط فایل استاتیک (تصویر/فونت) نگه می‌دارد؛ اجرای هر نوع اسکریپت ممنوع است.
+Options -Indexes -ExecCGI
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phar .pht .phps .cgi .pl .py .sh
+RemoveType .php .phtml .php3 .php4 .php5 .php7 .php8 .phar .pht .phps
+<IfModule mod_mime.c>
+    AddType application/octet-stream .php .phtml .phar .pht
+</IfModule>
+
+<FilesMatch "\.(?i:php\d?|phtml|phar|pht|phps|cgi|pl|py|sh|shtml|html?|svg|js|htaccess)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+</IfModule>
