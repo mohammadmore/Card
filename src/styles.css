@@ -97,9 +97,11 @@ body { background: transparent; }
 .sc-stage:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--g3) 55%, transparent); }
 .sc-persp { position: absolute; left: 50%; transform: translateX(-50%); perspective: 1600px; perspective-origin: 50% 50%; }
 .sc-card { position: relative; transform-style: preserve-3d; will-change: transform; }
+.sc-front { z-index: 2; }
+.sc-shadow, .sc-reflect { z-index: 0; }
 .sc-face { position: absolute; inset: 0; overflow: hidden; backface-visibility: hidden; -webkit-backface-visibility: hidden; background: #fff; transform-style: flat; }
 .sc-canvas { display: block; width: 100%; height: 100%; }
-.sc-edge { position: absolute; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.sc-edge { position: absolute; transform-origin: 50% 50%; }
 .sc-gloss { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: soft-light;
   background-image: linear-gradient(105deg, transparent 32%, rgba(255,255,255,.75) 46%, rgba(255,255,255,.95) 50%, rgba(255,255,255,.75) 54%, transparent 68%);
   background-size: 260% 100%; background-repeat: no-repeat; }

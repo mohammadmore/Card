@@ -1,6 +1,6 @@
 // نمایش سه‌بعدی کارت دورو: کارت با ضخامت واقعی حول محور عمودی خودش می‌چرخد (خودکار + کشیدن با دست)،
 // با سایه‌ی نرم، درخشش براق روی سطح و انعکاس روی زمین. فقط transform تغییر می‌کند تا روان و سبک بماند.
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useMemo } = React;
 
 const AUTO_SPEED = 42;          // درجه بر ثانیه (در نزدیکی رو/پشت کندتر می‌شود)
 const HOLD_AFTER_FLIP_MS = 2600; // توقف روی یک رو بعد از دکمه‌ی «روی کارت/پشت کارت»
@@ -28,23 +28,44 @@ const edgeColorOf = (canvas) => {
     } catch (e) { return '#dfe3ea'; }
 };
 
-function CardBody({ w, h, faceRefs, edge, withGloss, glossRefs }) {
-    const t = Math.max(3, Math.round(w * 0.012)); const r = Math.round(Math.min(w, h) * 0.045);
+/**
+ * لبه‌ی کارت: نواری پیوسته دور تا دور (خطوط صاف + گوشه‌های گرد با چند قطعه‌ی کوچک)،
+ * عمود بر سطح کارت و هم‌ضخامت آن، تا از هر زاویه گوشه‌ها مثل خود کارت گرد دیده شوند.
+ */
+const edgeSegments = (w, h, r, perCorner = 8) => {
+    const segs = [];
+    const line = (cx, cy, len, deg) => segs.push({ cx, cy, len, deg });
+    line(w / 2, 0, w - 2 * r, 0); line(w, h / 2, h - 2 * r, 90); line(w / 2, h, w - 2 * r, 180); line(0, h / 2, h - 2 * r, 270);
+    const corners = [[w - r, r, -90], [w - r, h - r, 0], [r, h - r, 90], [r, r, 180]];
+    const step = 90 / perCorner; const len = 2 * r * Math.sin((step * Math.PI / 180) / 2) * 1.12;
+    corners.forEach(([ccx, ccy, a0]) => {
+        for (let i = 0; i < perCorner; i++) {
+            const phi = (a0 + step * (i + 0.5)) * Math.PI / 180;
+            line(ccx + r * Math.cos(phi), ccy + r * Math.sin(phi), len, a0 + step * (i + 0.5) + 90);
+        }
+    });
+    return segs;
+};
+
+function CardBody({ w, h, faceRefs, edge, withGloss, glossRefs, withEdge = true }) {
+    const t = Math.max(3, Math.round(w * 0.009)); const r = Math.round(Math.min(w, h) * 0.045);
     const face = (side) => (
         <div className="sc-face" style={{ width: w, height: h, borderRadius: r, transform: side === 'front' ? `translateZ(${t / 2}px)` : `rotateY(180deg) translateZ(${t / 2}px)` }}>
             <canvas ref={faceRefs[side]} className="sc-canvas" />
             {withGloss && <><div ref={glossRefs[side + 'Shade']} className="sc-shade" /><div ref={glossRefs[side]} className="sc-gloss" /></>}
         </div>
     );
-    const edgeBg = `linear-gradient(to bottom, color-mix(in srgb, ${edge} 70%, white), ${edge} 50%, color-mix(in srgb, ${edge} 70%, black))`;
-    const edgeBgH = `linear-gradient(to right, color-mix(in srgb, ${edge} 75%, black), color-mix(in srgb, ${edge} 70%, white) 50%, color-mix(in srgb, ${edge} 75%, black))`;
+    const segs = useMemo(() => edgeSegments(w, h, r), [w, h, r]);
     return (
         <>
+            {/* در انعکاس (آینه‌شده) لبه رسم نمی‌شود؛ کروم آن قطعه‌ها را جلوی رو و پشت کارت مرتب می‌کند و انعکاس خالی می‌ماند */}
+            {withEdge && segs.map((sg, i) => {
+                // نور از بالا: لبه‌ی بالایی روشن‌تر، لبه‌ی پایینی تیره‌تر
+                const light = -Math.sin((sg.deg - 90) * Math.PI / 180); // ۱ = رو به بالا، ۱- = رو به پایین
+                const tone = light >= 0 ? `color-mix(in srgb, ${edge} ${Math.round(100 - light * 35)}%, white)` : `color-mix(in srgb, ${edge} ${Math.round(100 + light * 40)}%, black)`;
+                return <div key={i} className="sc-edge" style={{ width: sg.len + 0.6, height: t, left: sg.cx - (sg.len + 0.6) / 2, top: sg.cy - t / 2, background: tone, transform: `rotateZ(${sg.deg}deg) rotateX(90deg)` }} />;
+            })}
             {face('front')}{face('back')}
-            <div className="sc-edge" style={{ width: t, height: h - 2 * r, left: (w - t) / 2, top: r, background: edgeBg, transform: `rotateY(90deg) translateZ(${w / 2}px)` }} />
-            <div className="sc-edge" style={{ width: t, height: h - 2 * r, left: (w - t) / 2, top: r, background: edgeBg, transform: `rotateY(-90deg) translateZ(${w / 2}px)` }} />
-            <div className="sc-edge" style={{ width: w - 2 * r, height: t, left: r, top: (h - t) / 2, background: edgeBgH, transform: `rotateX(90deg) translateZ(${h / 2}px)` }} />
-            <div className="sc-edge" style={{ width: w - 2 * r, height: t, left: r, top: (h - t) / 2, background: edgeBgH, transform: `rotateX(-90deg) translateZ(${h / 2}px)` }} />
         </>
     );
 }
@@ -164,17 +185,18 @@ export function CardShowcase3D({ front, back, version, t, label, Icon }) {
                 onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
                 tabIndex={0} role="img" aria-roledescription="3D" aria-label={label || t('view_3d')} onKeyDown={onKeyDown}>
                 {box.w > 0 && <>
-                    <div className="sc-persp" style={{ width: box.w, height: box.h, top: 12 }}>
-                        <div ref={cardRef} className="sc-card" style={{ width: box.w, height: box.h }}>
-                            <CardBody w={box.w} h={box.h} faceRefs={faces} edge={edge} withGloss glossRefs={gloss} />
-                        </div>
-                    </div>
-                    <div ref={shadowRef} className="sc-shadow" style={{ width: box.w * 0.92, top: 12 + box.h - 6 }} />
+                    {/* انعکاس و سایه اول رسم می‌شوند تا همیشه زیر کارت باشند، نه روی آن */}
                     <div className="sc-reflect" style={{ width: box.w, height: box.h * 0.24, top: 12 + box.h + 3 }} aria-hidden="true">
                         <div className="sc-persp sc-mirror" style={{ width: box.w, height: box.h }}>
                             <div ref={reflRef} className="sc-card" style={{ width: box.w, height: box.h }}>
-                                <CardBody w={box.w} h={box.h} faceRefs={reflFaces} edge={edge} />
+                                <CardBody w={box.w} h={box.h} faceRefs={reflFaces} edge={edge} withEdge={false} />
                             </div>
+                        </div>
+                    </div>
+                    <div ref={shadowRef} className="sc-shadow" style={{ width: box.w * 0.92, top: 12 + box.h - 9 }} aria-hidden="true" />
+                    <div className="sc-persp sc-front" style={{ width: box.w, height: box.h, top: 12 }}>
+                        <div ref={cardRef} className="sc-card" style={{ width: box.w, height: box.h }}>
+                            <CardBody w={box.w} h={box.h} faceRefs={faces} edge={edge} withGloss glossRefs={gloss} />
                         </div>
                     </div>
                 </>}
