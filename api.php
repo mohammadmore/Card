@@ -158,7 +158,28 @@ function throttle_fail(PDO $pdo, string $key): void {
 function throttle_clear(PDO $pdo, string $key): void { $pdo->prepare("DELETE FROM login_attempts WHERE k = ?")->execute([$key]); }
 
 function session_info(): array {
-    return ['super' => is_super(), 'tenants' => (object)($_SESSION['tenants'] ?? [])];
+    global $pdo;
+    return ['super' => is_super(), 'tenants' => (object)($_SESSION['tenants'] ?? []), 'platformLogo' => get_setting($pdo, 'logoUrl')];
+}
+
+// --- تنظیمات کلی پلتفرم (مثل لوگوی پنل سوپرادمین و لوگوی پیش‌فرض سازمان‌ها) ---
+function ensure_settings_table(PDO $pdo): void {
+    static $done = false; if ($done) return; $done = true;
+    $pdo->exec("CREATE TABLE IF NOT EXISTS platform_settings (k VARCHAR(64) PRIMARY KEY, v TEXT NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+function get_setting(PDO $pdo, string $key): string {
+    ensure_settings_table($pdo);
+    $stmt = $pdo->prepare("SELECT v FROM platform_settings WHERE k = ?"); $stmt->execute([$key]);
+    $v = $stmt->fetchColumn(); return $v === false ? '' : (string)$v;
+}
+function set_setting(PDO $pdo, string $key, string $value): void {
+    ensure_settings_table($pdo);
+    $pdo->prepare("INSERT INTO platform_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)")->execute([$key, $value]);
+}
+/** آدرس تصویر مجاز: فایل آپلودشده‌ی همین سامانه یا لینک http(s). */
+function valid_image_url(string $url): bool {
+    if (preg_match('#^uploads/images/[a-f0-9]{32}\.(jpg|png|webp|gif)$#', $url)) return true;
+    return (bool)preg_match('#^https?://[^\s"\'<>]+$#i', $url) && filter_var($url, FILTER_VALIDATE_URL);
 }
 
 // ==========================================
@@ -654,6 +675,14 @@ $routes = [
         respond($out);
     },
     'GET ping' => function () { respond(['ok' => true]); },
+    'POST save_platform_settings' => function () use ($pdo, $input) {
+        require_super();
+        $logo = trim(in_str($input, 'logoUrl', 1000));
+        if ($logo !== '' && !valid_image_url($logo)) fail_field('لینک تصویر نامعتبر است. یک فایل آپلود کنید یا لینکی که با https:// شروع می‌شود وارد کنید.', 'logoUrl');
+        set_setting($pdo, 'logoUrl', $logo);
+        audit($pdo, '', 'platform_settings', '', ['logoUrl' => $logo]);
+        respond(['success' => true, 'platformLogo' => $logo]);
+    },
     'GET check_slug' => function () use ($pdo) {
         require_super();
         $slug = strtolower(trim(is_string($_GET['slug'] ?? null) ? $_GET['slug'] : ''));

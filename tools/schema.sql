@@ -91,3 +91,8 @@ CREATE TABLE IF NOT EXISTS webhook_logs (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   KEY idx_wh_tenant (tenant_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS platform_settings (
+  k VARCHAR(64) PRIMARY KEY,
+  v TEXT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

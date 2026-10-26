@@ -51,7 +51,6 @@ const FA_LETTERS = 'آاأإبپتثجچحخدذرزژسشصضطظعغفقکگل
 const FA_TEXT_INVALID = new RegExp(`[^${FA_LETTERS}\\s\\u200C]`, 'g');
 const FA_MIXED_INVALID = new RegExp(`[^${FA_LETTERS}۰-۹\\s\\-\\.\\,\\(\\)\\/\\u200C]`, 'g');
 
-const ASVA_LOGO = "https://asvashop.com/esse/asva.png";
 const SHAPES = { RECTANGLE: 'مستطیل', ROUNDED: 'مستطیل گوشه گرد', CIRCLE: 'دایره', OVAL: 'بیضی' };
 const DEFAULT_FONTS = ['Vazirmatn', 'Tahoma', 'Arial', 'Times New Roman', 'Courier New'];
 // ابعاد پیش‌فرض بوم (وقتی تصویر پس‌زمینه وجود ندارد). با تصویر پس‌زمینه، ابعاد خود تصویر ملاک است.
@@ -183,6 +182,20 @@ const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 const RESERVED_SLUGS = ['assets', 'uploads', 'tools', 'src', 'api', 'index', 'admin', 'superadmin', 'node_modules', 'verify', 'login', 'logout', 'public', 'static'];
 const PATH_ORG = (() => { const last = window.location.pathname.split('/').pop(); return SLUG_RE.test(last) && !RESERVED_SLUGS.includes(last) ? last : ''; })();
 const APP_BASE = PATH_ORG ? window.location.pathname.slice(0, -PATH_ORG.length) : window.location.pathname.replace(/[^/]*$/, '');
+// لوگوی پلتفرم: سوپرادمین از «تنظیمات پلتفرم» تعیین می‌کند؛ اگر تعیین نشده یا لینکش خراب باشد، لوگوی محلی نمایش داده می‌شود
+const DEFAULT_LOGO = `${APP_BASE}assets/logo.svg`;
+let platformLogo = ''; const logoListeners = new Set();
+const setPlatformLogo = (url) => { platformLogo = url || ''; logoListeners.forEach(f => f()); };
+const subscribeLogo = (cb) => { logoListeners.add(cb); return () => logoListeners.delete(cb); };
+const usePlatformLogo = () => React.useSyncExternalStore(subscribeLogo, () => platformLogo);
+/** تصویر لوگو: لوگوی سازمان ← لوگوی پلتفرم ← لوگوی پیش‌فرض (در صورت خطای بارگذاری، گزینه‌ی بعدی). */
+function LogoImg({ src, alt = '', className = '', usePlatform = true }) {
+    const plat = usePlatformLogo();
+    const chain = useMemo(() => [...new Set([src, usePlatform && plat, DEFAULT_LOGO].filter(u => u && /^(https?:\/\/|uploads\/|\/|\.\/)/i.test(u)))], [src, plat, usePlatform]);
+    const [idx, setIdx] = useState(0);
+    useEffect(() => setIdx(0), [chain.join('|')]);
+    return <img src={chain[Math.min(idx, chain.length - 1)]} alt={alt} className={className} onError={() => setIdx(i => (i < chain.length - 1 ? i + 1 : i))} />;
+}
 const urlOrgKey = () => new URLSearchParams(window.location.search).get('org') || PATH_ORG;
 // آیا سرور لینک کوتاه (mod_rewrite) را پشتیبانی می‌کند؟ یک بار بررسی می‌شود.
 let rewriteCheck = null;
@@ -735,7 +748,7 @@ const usePhotoCrop = (setFormData) => {
 function TenantLoginPreview({ data, t, realMode }) {
     return (
         <div className={`glass-strong rounded-3xl p-8 max-w-sm w-full mx-auto text-center flex flex-col h-[500px] ${realMode ? 'ring-2 ring-white/80' : ''}`}>
-            <img src={data.logoUrl || ASVA_LOGO} className="w-24 h-24 mx-auto object-contain mb-4 rounded-xl" />
+            <LogoImg src={data.logoUrl} className="w-24 h-24 mx-auto object-contain mb-4 rounded-xl" />
             <h2 className="text-xl font-bold text-slate-800 mb-2">عضو محترم «{data.orgName || 'سازمان من'}»</h2>
             <p className="text-sm text-slate-500 mb-6">{data.welcomeText || t('enter_passcode')}</p>
             <div className="space-y-4 opacity-50 pointer-events-none mb-4">
@@ -1427,7 +1440,7 @@ function SystemEntry({ mode, tenant, t, langControl, onSuperAdmin, onTenantLogin
         }
     };
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen p-4"><div className="glass-strong p-8 rounded-3xl w-full max-w-md relative overflow-hidden flex flex-col"><div className="relative z-10 flex-1 flex flex-col">{langControl && <div className="flex justify-end text-slate-600 mb-2"><LanguageSwitcher control={langControl} /></div>}<div className="flex justify-center mb-6"><img src={(tenant && tenant.logoUrl) || ASVA_LOGO} alt="Logo" className="h-20 object-contain drop-shadow-2xl rounded-xl" /></div>{tenant && tenant.closedReason && <div role="alert" className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm text-center">{tenant.closedReason}</div>}<h1 className="text-2xl font-bold text-center text-slate-800 mb-2">{tenant ? tenant.orgName : t('portal_title')}</h1><p className="text-center text-slate-600 mb-8 text-sm">{tenant ? (tenant.welcomeText || t('enter_passcode')) : t('enter_passcode')}</p><form onSubmit={handleLogin} className="space-y-4 mb-4"><div><input type="password" aria-label={t('passcode')} value={passcode} onChange={(e) => { setPasscode(e.target.value); setError(''); }} autoComplete="current-password" className="w-full px-4 py-3 bg-white/70 border border-white rounded-xl text-slate-800 text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder={t('passcode')} autoFocus /></div>{error && <p role="alert" className="text-red-600 text-sm text-center">{error}</p>}{lockLeft > 0 && <p role="status" className="text-amber-700 text-sm text-center font-bold">{t('locked_wait', fmtLeft(lockLeft))}</p>}<button type="submit" disabled={busy || !passcode || lockLeft > 0} className="w-full btn-grad py-3 rounded-xl font-bold transition-all">{busy ? t('processing') : t('login')}</button></form><div className="mt-auto pt-6 border-t border-white/60"><BrandingFooter /></div></div></div></div>
+        <div className="flex flex-col items-center justify-center min-h-screen p-4"><div className="glass-strong p-8 rounded-3xl w-full max-w-md relative overflow-hidden flex flex-col"><div className="relative z-10 flex-1 flex flex-col">{langControl && <div className="flex justify-end text-slate-600 mb-2"><LanguageSwitcher control={langControl} /></div>}<div className="flex justify-center mb-6"><LogoImg src={tenant && tenant.logoUrl} alt="Logo" className="h-20 object-contain drop-shadow-2xl rounded-xl" /></div>{tenant && tenant.closedReason && <div role="alert" className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm text-center">{tenant.closedReason}</div>}<h1 className="text-2xl font-bold text-center text-slate-800 mb-2">{tenant ? tenant.orgName : t('portal_title')}</h1><p className="text-center text-slate-600 mb-8 text-sm">{tenant ? (tenant.welcomeText || t('enter_passcode')) : t('enter_passcode')}</p><form onSubmit={handleLogin} className="space-y-4 mb-4"><div><input type="password" aria-label={t('passcode')} value={passcode} onChange={(e) => { setPasscode(e.target.value); setError(''); }} autoComplete="current-password" className="w-full px-4 py-3 bg-white/70 border border-white rounded-xl text-slate-800 text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder={t('passcode')} autoFocus /></div>{error && <p role="alert" className="text-red-600 text-sm text-center">{error}</p>}{lockLeft > 0 && <p role="status" className="text-amber-700 text-sm text-center font-bold">{t('locked_wait', fmtLeft(lockLeft))}</p>}<button type="submit" disabled={busy || !passcode || lockLeft > 0} className="w-full btn-grad py-3 rounded-xl font-bold transition-all">{busy ? t('processing') : t('login')}</button></form><div className="mt-auto pt-6 border-t border-white/60"><BrandingFooter /></div></div></div></div>
     );
 }
 
@@ -1490,9 +1503,43 @@ function AuditLogModal({ tenantId, title, t, lang = 'fa', onClose }) {
 
 const tenantStatus = (tn) => !tn.closedReason ? ['فعال', 'bg-green-50 text-green-700'] : (tn.isActive === false ? ['غیرفعال', 'bg-red-50 text-red-700'] : ['پایان مهلت', 'bg-amber-50 text-amber-700']);
 
+/** تنظیمات کلی پلتفرم: لوگوی پنل سوپرادمین و لوگوی پیش‌فرض سازمان‌هایی که لوگوی خودشان را تعیین نکرده‌اند. */
+function PlatformSettingsModal({ onClose }) {
+    useEscape(onClose);
+    const current = usePlatformLogo();
+    const [logo, setLogo] = useState(current); const [uploading, setUploading] = useState(false); const [saving, setSaving] = useState(false); const [error, setError] = useState('');
+    const upload = async (file) => { if (!file) return; setUploading(true); const url = await uploadImageFile(file, { keepTransparency: true, maxSize: 512 }); setUploading(false); if (url) { setLogo(url); setError(''); } };
+    const save = async () => {
+        setSaving(true); setError('');
+        try { const r = await apiPost('save_platform_settings', { logoUrl: logo.trim() }); setPlatformLogo(r.platformLogo); notifySuccess('تنظیمات پلتفرم ذخیره شد.'); onClose(); }
+        catch (e) { setError(e.message); }
+        setSaving(false);
+    };
+    return (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+            <div role="dialog" aria-modal="true" aria-label="تنظیمات پلتفرم" className="glass-strong rounded-3xl p-6 w-full max-w-md">
+                <div className="flex justify-between items-center mb-5"><h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Icon name="Settings" className="w-5 h-5" /> تنظیمات پلتفرم</h3><button onClick={onClose} aria-label="بستن" className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full"><Icon name="X" className="w-4 h-4" /></button></div>
+                <label className="text-sm font-bold block mb-1">لوگوی پلتفرم</label>
+                <p className="text-xs text-slate-500 mb-3">در سربرگ پنل سوپرادمین و صفحه ورود نمایش داده می‌شود، و برای سازمان‌هایی که لوگوی خودشان را تعیین نکرده‌اند هم استفاده می‌شود. تصویر مربع با پس‌زمینه شفاف (PNG) بهترین نتیجه را دارد.</p>
+                <div className="flex items-center gap-4 mb-3">
+                    <div className="w-20 h-20 shrink-0 rounded-2xl bg-white/80 border flex items-center justify-center p-2"><LogoImg key={logo} src={logo.trim()} usePlatform={false} alt="پیش‌نمایش لوگو" className="max-w-full max-h-full object-contain" /></div>
+                    <div className="flex flex-col gap-2 flex-1 min-w-0">
+                        <label className={`flex items-center justify-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-3 py-2 rounded-xl text-sm font-bold cursor-pointer ${uploading ? 'opacity-50 animate-pulse pointer-events-none' : ''}`}><Icon name="UploadCloud" className="w-4 h-4" /> {uploading ? 'در حال آپلود…' : 'آپلود تصویر'}<input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files[0]; e.target.value = ''; upload(f); }} /></label>
+                        {logo && <button type="button" onClick={() => { setLogo(''); setError(''); }} className="text-xs text-slate-500 hover:text-red-600 underline">بازگشت به لوگوی پیش‌فرض</button>}
+                    </div>
+                </div>
+                <label htmlFor="platform-logo-url" className="text-xs font-bold text-slate-600 block mb-1">یا لینک تصویر</label>
+                <input id="platform-logo-url" dir="ltr" value={logo} onChange={e => { setLogo(e.target.value); setError(''); }} placeholder="https://..." className="w-full border rounded-xl px-3 py-2 text-sm text-left bg-white/80" aria-invalid={!!error} aria-describedby={error ? 'platform-logo-err' : undefined} />
+                {error && <p id="platform-logo-err" role="alert" className="text-xs text-red-600 mt-1">{error}</p>}
+                <div className="flex gap-2 mt-6"><button type="button" onClick={save} disabled={saving || uploading} className="flex-1 btn-grad text-white py-2.5 rounded-xl font-bold">{saving ? 'در حال ذخیره…' : 'ذخیره'}</button><button type="button" onClick={onClose} className="px-5 py-2.5 rounded-xl font-bold bg-white/70 border">انصراف</button></div>
+            </div>
+        </div>
+    );
+}
+
 function SuperAdminPanel({ tenants, t, fetchGlobalFonts, fetchGlobalValidations, onNewWizard, onEditWizard, onDuplicateWizard, onDeleteWizard, onRefresh, onLogout, publishedId, onPublishedSeen }) {
     const validTenants = Array.isArray(tenants) ? tenants : [];
-    const [showPresetsManager, setShowPresetsManager] = useState(false); const [showFontsManager, setShowFontsManager] = useState(false); const [showValidationsManager, setShowValidationsManager] = useState(false);
+    const [showPresetsManager, setShowPresetsManager] = useState(false); const [showFontsManager, setShowFontsManager] = useState(false); const [showValidationsManager, setShowValidationsManager] = useState(false); const [showPlatformSettings, setShowPlatformSettings] = useState(false);
     const rewriteOk = useRewriteOk();
     const [search, setSearch] = useState(''); const [sortBy, setSortBy] = useState('created'); const [linkFor, setLinkFor] = useState(null); const [auditFor, setAuditFor] = useState(null);
     useEffect(() => { if (publishedId) { const tn = validTenants.find(x => x.id === publishedId); if (tn) { setLinkFor({ tenant: tn, justPublished: true }); onPublishedSeen(); } } }, [publishedId, validTenants]);
@@ -1513,11 +1560,12 @@ function SuperAdminPanel({ tenants, t, fetchGlobalFonts, fetchGlobalValidations,
     return (
         <div className="max-w-6xl mx-auto p-4 md:p-6 flex-1 w-full flex flex-col relative">
             {showPresetsManager && <PresetsManagerModal onClose={() => setShowPresetsManager(false)} />}
+            {showPlatformSettings && <PlatformSettingsModal onClose={() => setShowPlatformSettings(false)} />}
             {showFontsManager && <FontsManagerModal onClose={() => setShowFontsManager(false)} fetchGlobalFonts={fetchGlobalFonts} />}
             {showValidationsManager && <ValidationsManagerModal onClose={() => setShowValidationsManager(false)} fetchGlobalValidations={fetchGlobalValidations} />}
             {linkFor && <TenantLinkModal tenant={linkFor.tenant} justPublished={linkFor.justPublished} onClose={() => setLinkFor(null)} />}
             {auditFor && <AuditLogModal tenantId={auditFor.id} title={auditFor.id ? `گزارش فعالیت «${auditFor.orgName}»` : 'گزارش فعالیت همه‌ی سازمان‌ها'} t={t} onClose={() => setAuditFor(null)} />}
-            <header className="flex flex-col lg:flex-row justify-between items-center mb-6 glass p-4 rounded-2xl gap-4"><div className="flex items-center gap-4"><img src={ASVA_LOGO} alt="" className="w-12 h-12 object-contain bg-slate-800 p-1 rounded-lg" /><div><h1 className="text-xl font-bold text-slate-800">{t('superadmin_panel')}</h1><p className="text-sm text-slate-500">{t('manage_platforms')} — {validTenants.length} سازمان، {totalCards} کارت</p></div></div><div className="flex items-center gap-2 flex-wrap justify-end"><button onClick={() => setAuditFor({ id: '' })} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="ScrollText" className="w-4 h-4" /> گزارش فعالیت</button><button onClick={() => setShowValidationsManager(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="CheckCircle2" className="w-4 h-4" /> اعتبارسنجی</button><button onClick={() => setShowFontsManager(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="Type" className="w-4 h-4" /> فونت‌ها</button><button onClick={() => setShowPresetsManager(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="Database" className="w-4 h-4" /> {t('base_lists')}</button><button onClick={onLogout} className="flex items-center gap-2 text-slate-600 hover:text-red-500 bg-slate-50 hover:bg-red-50 px-4 py-2 rounded-xl font-bold border"><Icon name="LogOut" className="w-4 h-4" /> {t('logout')}</button></div></header>
+            <header className="flex flex-col lg:flex-row justify-between items-center mb-6 glass p-4 rounded-2xl gap-4"><div className="flex items-center gap-4"><LogoImg alt="" className="w-12 h-12 object-contain rounded-lg" /><div><h1 className="text-xl font-bold text-slate-800">{t('superadmin_panel')}</h1><p className="text-sm text-slate-500">{t('manage_platforms')} — {validTenants.length} سازمان، {totalCards} کارت</p></div></div><div className="flex items-center gap-2 flex-wrap justify-end"><button onClick={() => setAuditFor({ id: '' })} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="ScrollText" className="w-4 h-4" /> گزارش فعالیت</button><button onClick={() => setShowValidationsManager(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="CheckCircle2" className="w-4 h-4" /> اعتبارسنجی</button><button onClick={() => setShowFontsManager(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="Type" className="w-4 h-4" /> فونت‌ها</button><button onClick={() => setShowPresetsManager(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="Database" className="w-4 h-4" /> {t('base_lists')}</button><button onClick={() => setShowPlatformSettings(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="Settings" className="w-4 h-4" /> تنظیمات پلتفرم</button><button onClick={onLogout} className="flex items-center gap-2 text-slate-600 hover:text-red-500 bg-slate-50 hover:bg-red-50 px-4 py-2 rounded-xl font-bold border"><Icon name="LogOut" className="w-4 h-4" /> {t('logout')}</button></div></header>
             <div className="flex flex-col sm:flex-row gap-3 mb-6"><div className="relative flex-1"><Icon name="Search" className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" /><input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="جستجوی سازمان (نام یا شناسه)..." aria-label="جستجوی سازمان" className="w-full pr-10 pl-4 py-2.5 border border-white rounded-xl bg-white/70" /></div><select value={sortBy} onChange={e => setSortBy(e.target.value)} aria-label="مرتب‌سازی" className="border border-white rounded-xl px-3 py-2.5 bg-white/70 text-sm"><option value="created">جدیدترین</option><option value="name">نام</option><option value="cards">بیشترین کارت</option><option value="activity">آخرین فعالیت</option></select></div>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 flex-1">
                 <button type="button" onClick={onNewWizard} className="glass-soft border-2 border-dashed border-indigo-300 rounded-3xl p-8 flex flex-col items-center justify-center text-indigo-700 hover:bg-white/60 transition-colors cursor-pointer min-h-[220px]"><Icon name="Plus" className="w-12 h-12 mb-3" /><span className="font-bold text-lg">{t('new_org')}</span><span className="text-sm opacity-80 text-center mt-2">{t('new_org_desc')}</span></button>
@@ -2094,7 +2142,7 @@ function TenantForm({ tenant, t, lang, langControl, globalValidations, onLogout 
             {cropModal(t)}{myCardsModal}
             <div className="md:w-1/3 glass border-l border-white/60 p-8 flex flex-col items-center text-center z-10 relative">
                 <div className={`absolute top-4 ${isRtl ? 'right-4' : 'left-4'} flex items-center gap-3 text-slate-500`}><button onClick={onLogout} aria-label={t('logout')} title={t('logout')} className="hover:text-red-500"><Icon name="LogOut" className="w-5 h-5" /></button><LanguageSwitcher control={langControl} /></div>
-                <div className="flex-1 flex flex-col items-center justify-center w-full mt-10"><img src={tenant.logoUrl || ASVA_LOGO} alt="" className="w-32 h-32 object-contain mb-6 rounded-2xl shadow-sm" /><h1 className="text-3xl font-bold text-slate-800 mb-4">{tenant.orgName}</h1><p className="text-slate-500 leading-relaxed">{tenant.welcomeText}</p></div>
+                <div className="flex-1 flex flex-col items-center justify-center w-full mt-10"><LogoImg src={tenant.logoUrl} alt="" className="w-32 h-32 object-contain mb-6 rounded-2xl shadow-sm" /><h1 className="text-3xl font-bold text-slate-800 mb-4">{tenant.orgName}</h1><p className="text-slate-500 leading-relaxed">{tenant.welcomeText}</p></div>
                 <div className="mt-auto pt-8 border-t border-slate-100 w-full"><BrandingFooter /></div>
             </div>
             <div className="flex-1 p-4 md:p-12 overflow-y-auto">
@@ -2214,7 +2262,7 @@ function TenantDashboard({ tenant, t, lang, langControl, globalValidations, onLo
             {showAudit && <AuditLogModal tenantId={tenant.id} t={t} lang={lang} onClose={() => setShowAudit(false)} />}
             {bulk && <div role="status" aria-live="polite" className="fixed inset-0 z-[80] bg-slate-900/60 flex items-center justify-center p-4"><div className="bg-white rounded-2xl p-6 w-full max-w-sm text-center shadow-2xl"><p className="font-bold text-slate-800 mb-3">{t('export_progress', bulk.done, bulk.total)}</p><div className="h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-600 transition-all" style={{ width: `${(bulk.done / bulk.total) * 100}%` }} /></div></div></div>}
 
-            <header className="max-w-6xl mx-auto w-full glass rounded-2xl p-4 md:p-6 mb-6 flex flex-col sm:flex-row justify-between items-center gap-4"><div className="flex items-center gap-4"><img src={tenant.logoUrl || ASVA_LOGO} alt="" className="w-12 h-12 object-contain bg-slate-50 rounded-lg p-1" /><div><h1 className="text-2xl font-bold text-slate-800">{t('dashboard_title')}</h1><p className="text-sm text-slate-500">{tenant.orgName} — {t('history_subtitle')}</p></div></div><div className="flex flex-wrap gap-2 justify-center items-center"><LanguageSwitcher control={langControl} className="text-slate-600" /><button onClick={() => exportToCSV(selectedCards.length ? selectedCards : filteredCards, tenant, t)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 px-4 py-2 rounded-xl font-bold"><Icon name="FileSpreadsheet" className="w-4 h-4" /> {t('export_excel')}</button><button onClick={() => setShowAudit(true)} className="flex items-center gap-2 text-slate-600 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="ScrollText" className="w-4 h-4" /> {t('activity_log')}</button><button onClick={() => setShowSettings(true)} className="flex items-center gap-2 text-slate-600 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="Settings" className="w-4 h-4" /> {t('settings')}</button><button onClick={onLogout} className="flex items-center gap-2 text-slate-600 hover:text-red-500 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="LogOut" className="w-4 h-4" /> {t('logout')}</button></div></header>
+            <header className="max-w-6xl mx-auto w-full glass rounded-2xl p-4 md:p-6 mb-6 flex flex-col sm:flex-row justify-between items-center gap-4"><div className="flex items-center gap-4"><LogoImg src={tenant.logoUrl} alt="" className="w-12 h-12 object-contain bg-slate-50 rounded-lg p-1" /><div><h1 className="text-2xl font-bold text-slate-800">{t('dashboard_title')}</h1><p className="text-sm text-slate-500">{tenant.orgName} — {t('history_subtitle')}</p></div></div><div className="flex flex-wrap gap-2 justify-center items-center"><LanguageSwitcher control={langControl} className="text-slate-600" /><button onClick={() => exportToCSV(selectedCards.length ? selectedCards : filteredCards, tenant, t)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 px-4 py-2 rounded-xl font-bold"><Icon name="FileSpreadsheet" className="w-4 h-4" /> {t('export_excel')}</button><button onClick={() => setShowAudit(true)} className="flex items-center gap-2 text-slate-600 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="ScrollText" className="w-4 h-4" /> {t('activity_log')}</button><button onClick={() => setShowSettings(true)} className="flex items-center gap-2 text-slate-600 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="Settings" className="w-4 h-4" /> {t('settings')}</button><button onClick={onLogout} className="flex items-center gap-2 text-slate-600 hover:text-red-500 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="LogOut" className="w-4 h-4" /> {t('logout')}</button></div></header>
             {tenant.closedReason && <div role="alert" className="max-w-6xl mx-auto w-full mb-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-sm font-bold">{tenant.closedReason} {t('admin_view_only')}</div>}
             <div role="tablist" aria-label={t('dashboard_title')} className="view-toggle max-w-6xl mx-auto w-full mb-4 flex"><div className="inline-flex glass rounded-xl p-1">{[['list', 'List', t('card_list')], ['reports', 'ChartColumn', t('reports')]].map(([v, ic, lb]) => <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-slate-600"><Icon name={ic} className="w-4 h-4" /> {lb}</button>)}</div></div>
             {view === 'reports' && <div className="max-w-6xl mx-auto w-full flex-1 mb-8"><ReportsPanel tenant={tenant} cards={cards} loading={loading} t={t} lang={lang} Icon={Icon} formatDate={formatDateTime} /></div>}
@@ -2306,7 +2354,7 @@ function CardPlatform() {
         if (params.get('verify')) { setAppState('VERIFY'); return; }
         (async () => {
             try {
-                const session = await apiGet('get_session');
+                const session = await apiGet('get_session'); setPlatformLogo(session.platformLogo);
                 if (orgKey) {
                     // آدرس می‌تواند شناسه یا آدرس اختصاصی باشد؛ از اینجا به بعد شناسه‌ی واقعی استفاده می‌شود
                     const pub = await apiGet('get_tenant_public', { id: orgKey }); const orgId = pub.id;
