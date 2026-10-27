@@ -276,5 +276,12 @@ html.dark .keep-light .bg-red-100\/80 { background-color: rgba(254, 226, 226, .8
 html.dark .keep-light .text-red-500 { color: #ef4444 !important; }
 html.dark .keep-light .text-amber-700 { color: #b45309 !important; }
 html.dark .keep-light .border-slate-800 { border-color: #1e293b !important; }
-html.dark .theme-transition, html.dark .theme-transition * { transition: background-color .25s ease, color .25s ease, border-color .25s ease; }
 }
+
+/* محو شدن نرم هنگام تغییر روشن/تیره */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .5s; animation-timing-function: ease-in-out; }
+html.theme-fading, html.theme-fading *, html.theme-fading *::before, html.theme-fading *::after {
+  transition: background-color .5s ease, color .5s ease, border-color .5s ease, fill .5s ease, stroke .5s ease, box-shadow .5s ease !important;
+}
+/* دایره‌ی شماره‌ی مرحله‌ی فعلی ویزارد (در هر دو حالت روشن و تیره ثابت) */
+.step-dot-active { background: #fff; color: #4338ca; }
