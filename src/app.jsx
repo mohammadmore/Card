@@ -182,12 +182,14 @@ const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 const RESERVED_SLUGS = ['assets', 'uploads', 'tools', 'src', 'api', 'index', 'admin', 'superadmin', 'node_modules', 'verify', 'login', 'logout', 'public', 'static'];
 const PATH_ORG = (() => { const last = window.location.pathname.split('/').pop(); return SLUG_RE.test(last) && !RESERVED_SLUGS.includes(last) ? last : ''; })();
 const APP_BASE = PATH_ORG ? window.location.pathname.slice(0, -PATH_ORG.length) : window.location.pathname.replace(/[^/]*$/, '');
-// لوگوی پلتفرم: سوپرادمین از «تنظیمات پلتفرم» تعیین می‌کند؛ اگر تعیین نشده یا لینکش خراب باشد، لوگوی محلی نمایش داده می‌شود
+// تنظیمات پلتفرم (نام، لوگو، آیکون تب، فوتر، رنگ‌ها، امنیت): سوپرادمین از «تنظیمات پلتفرم» تعیین می‌کند.
+// اگر لوگو تعیین نشده یا لینکش خراب باشد، لوگوی محلی نمایش داده می‌شود.
 const DEFAULT_LOGO = `${APP_BASE}assets/logo.svg`;
-let platformLogo = ''; const logoListeners = new Set();
-const setPlatformLogo = (url) => { platformLogo = url || ''; logoListeners.forEach(f => f()); };
-const subscribeLogo = (cb) => { logoListeners.add(cb); return () => logoListeners.delete(cb); };
-const usePlatformLogo = () => React.useSyncExternalStore(subscribeLogo, () => platformLogo);
+let platformState; const platformListeners = new Set();
+const setPlatform = (p) => { platformState = { ...DEFAULT_PLATFORM, ...(p || {}), footer: { ...DEFAULT_PLATFORM.footer, ...((p && p.footer) || {}) } }; platformListeners.forEach(f => f()); };
+const subscribePlatform = (cb) => { platformListeners.add(cb); return () => platformListeners.delete(cb); };
+const usePlatform = () => React.useSyncExternalStore(subscribePlatform, () => platformState);
+const usePlatformLogo = () => usePlatform().logoUrl;
 /** تصویر لوگو: لوگوی سازمان ← لوگوی پلتفرم ← لوگوی پیش‌فرض (در صورت خطای بارگذاری، گزینه‌ی بعدی). */
 function LogoImg({ src, alt = '', className = '', usePlatform = true }) {
     const plat = usePlatformLogo();
@@ -222,6 +224,13 @@ const THEME_PRESETS = [
     { name: 'یاسی', c1: '#f0abfc', c2: '#c4b5fd', c3: '#93c5fd' },
 ];
 const themeOf = (tn) => ({ ...DEFAULT_THEME, ...((tn && tn.theme) || {}) });
+// مقادیر پیش‌فرض باید با platform_defaults() در api.php یکی باشند
+const DEFAULT_PLATFORM = {
+    name: 'پلتفرم یکپارچه صدور کارت', logoUrl: '', faviconUrl: '',
+    footer: { show: true, line1: 'Powered by Asva Studio', line2: 'توسعه یافته توسط شرکت داده‌پردازان اسوا', phone: '09966697806', link: 'https://t.me/+989966697806' },
+    defaultTheme: DEFAULT_THEME, superTheme: DEFAULT_THEME, idleMinutes: 60, loginMaxAttempts: 5, loginLockMinutes: 15,
+};
+platformState = DEFAULT_PLATFORM;
 /** پس‌زمینه‌ی گرادیانت سیال. fixed=false برای پیش‌نمایش داخل یک کادر. */
 const LiquidBackground = ({ colors, fixed = true }) => (
     <div aria-hidden="true" className={`liquid-bg ${fixed ? 'fixed' : 'absolute'} inset-0`} style={colors ? { '--g1': colors.c1, '--g2': colors.c2, '--g3': colors.c3 } : undefined}>
@@ -308,7 +317,7 @@ const FALLBACK_FA = {
     "pass_min_length": "رمز باید حداقل ۴ کاراکتر باشد.", "pass_keep_hint": "خالی بگذارید تا رمز فعلی حفظ شود", "pass_is_set": "تعیین شده",
     "auto_serial": "(پس از ثبت به‌صورت خودکار تعیین می‌شود)", "font_warning": "برخی فونت‌ها لود نشدند؛ ممکن است کارت با فونت جایگزین نمایش داده شود.",
     "session_expired": "نشست شما منقضی شده است. لطفاً دوباره وارد شوید.",
-    "action": "عملیات", "activity_log": "گزارش فعالیت", "actor": "انجام‌دهنده", "actor_admin": "مدیر سازمان", "actor_user": "کاربر", "actor_super": "سوپرادمین", "actor_guest": "ناشناس", "admin_view_only": "(فقط مشاهده و خروجی؛ صدور کارت جدید ممکن نیست)", "all": "همه", "all_actions": "همه‌ی عملیات‌ها", "bulk_actions": "عملیات گروهی", "bulk_delete_confirm": "{0} کارت انتخاب‌شده برای همیشه حذف شوند؟", "bulk_deleted": "{0} کارت حذف شد.", "bulk_pdf": "PDF چندصفحه‌ای", "bulk_zip": "ZIP تصاویر", "clear_filters": "پاک کردن فیلترها", "clear_selection": "لغو انتخاب", "close": "بستن", "date_from": "از تاریخ", "date_to": "تا تاریخ", "deleted": "حذف شد.", "details": "جزئیات", "editing_issued_card": "در حال ویرایش یک کارت صادرشده هستید؛ با ذخیره، همان کارت به‌روز می‌شود.", "expires_at": "تاریخ انقضا", "export_done": "خروجی {0} کارت آماده شد.", "export_progress": "در حال آماده‌سازی {0} از {1}...", "field_required": "«{0}» الزامی است.", "filter": "فیلتر", "forget_card": "حذف از فهرست من", "forget_card_confirm": "این کارت از فهرست «کارت‌های من» در این دستگاه حذف شود؟ (خود کارت حذف نمی‌شود)", "locked_wait": "ورود به‌طور موقت قفل شده است. {0} دیگر دوباره تلاش کنید.", "my_cards": "کارت‌های من", "my_cards_hint": "کارت‌هایی که از این دستگاه صادر کرده‌اید. می‌توانید آن‌ها را دوباره ببینید، دانلود یا ویرایش کنید.", "next_page": "صفحه‌ی بعد", "per_page": "تعداد در صفحه:", "prev_page": "صفحه‌ی قبل", "required": "الزامی", "restore": "فعال‌سازی دوباره", "revoke": "ابطال کارت", "revoke_confirm": "این کارت باطل شود؟ در استعلام QR «باطل‌شده» نمایش داده می‌شود.", "select": "انتخاب", "select_all": "انتخاب همه‌ی نتایج", "selected_count": "{0} مورد انتخاب شده", "set_expiry_prompt": "تاریخ انقضای جدید (میلادی). خالی = بدون انقضا", "status_active": "معتبر", "status_expired": "منقضی", "status_revoked": "باطل‌شده", "time": "زمان", "verify_title": "استعلام اعتبار کارت", "verify_not_found": "کارتی با این کد پیدا نشد.", "verify_active": "کارت معتبر است", "verify_expired": "اعتبار کارت به پایان رسیده است", "verify_revoked": "این کارت باطل شده است", "audit_login": "ورود", "audit_login_failed": "ورود ناموفق", "audit_super_login": "ورود سوپرادمین", "audit_super_login_failed": "ورود ناموفق سوپرادمین", "audit_tenant_create": "ساخت سازمان", "audit_tenant_update": "ویرایش سازمان", "audit_tenant_delete": "حذف سازمان", "audit_tenant_active": "تغییر وضعیت سامانه", "audit_passwords_change": "تغییر رمزها", "audit_card_create": "صدور کارت", "audit_card_update": "ویرایش کارت", "audit_card_delete": "حذف کارت", "audit_cards_bulk_delete": "حذف گروهی کارت‌ها", "audit_card_status": "تغییر وضعیت کارت",
+    "action": "عملیات", "activity_log": "گزارش فعالیت", "actor": "انجام‌دهنده", "actor_admin": "مدیر سازمان", "actor_user": "کاربر", "actor_super": "سوپرادمین", "actor_guest": "ناشناس", "admin_view_only": "(فقط مشاهده و خروجی؛ صدور کارت جدید ممکن نیست)", "all": "همه", "all_actions": "همه‌ی عملیات‌ها", "bulk_actions": "عملیات گروهی", "bulk_delete_confirm": "{0} کارت انتخاب‌شده برای همیشه حذف شوند؟", "bulk_deleted": "{0} کارت حذف شد.", "bulk_pdf": "PDF چندصفحه‌ای", "bulk_zip": "ZIP تصاویر", "clear_filters": "پاک کردن فیلترها", "clear_selection": "لغو انتخاب", "close": "بستن", "date_from": "از تاریخ", "date_to": "تا تاریخ", "deleted": "حذف شد.", "details": "جزئیات", "editing_issued_card": "در حال ویرایش یک کارت صادرشده هستید؛ با ذخیره، همان کارت به‌روز می‌شود.", "expires_at": "تاریخ انقضا", "export_done": "خروجی {0} کارت آماده شد.", "export_progress": "در حال آماده‌سازی {0} از {1}...", "field_required": "«{0}» الزامی است.", "filter": "فیلتر", "forget_card": "حذف از فهرست من", "forget_card_confirm": "این کارت از فهرست «کارت‌های من» در این دستگاه حذف شود؟ (خود کارت حذف نمی‌شود)", "locked_wait": "ورود به‌طور موقت قفل شده است. {0} دیگر دوباره تلاش کنید.", "my_cards": "کارت‌های من", "my_cards_hint": "کارت‌هایی که از این دستگاه صادر کرده‌اید. می‌توانید آن‌ها را دوباره ببینید، دانلود یا ویرایش کنید.", "next_page": "صفحه‌ی بعد", "per_page": "تعداد در صفحه:", "prev_page": "صفحه‌ی قبل", "required": "الزامی", "restore": "فعال‌سازی دوباره", "revoke": "ابطال کارت", "revoke_confirm": "این کارت باطل شود؟ در استعلام QR «باطل‌شده» نمایش داده می‌شود.", "select": "انتخاب", "select_all": "انتخاب همه‌ی نتایج", "selected_count": "{0} مورد انتخاب شده", "set_expiry_prompt": "تاریخ انقضای جدید (میلادی). خالی = بدون انقضا", "status_active": "معتبر", "status_expired": "منقضی", "status_revoked": "باطل‌شده", "time": "زمان", "verify_title": "استعلام اعتبار کارت", "verify_not_found": "کارتی با این کد پیدا نشد.", "verify_active": "کارت معتبر است", "verify_expired": "اعتبار کارت به پایان رسیده است", "verify_revoked": "این کارت باطل شده است", "audit_login": "ورود", "audit_login_failed": "ورود ناموفق", "audit_super_login": "ورود سوپرادمین", "audit_super_login_failed": "ورود ناموفق سوپرادمین", "audit_super_password_changed": "تغییر رمز سوپرادمین", "audit_super_password_failed": "تغییر رمز ناموفق سوپرادمین", "audit_platform_settings": "تغییر تنظیمات پلتفرم", "idle_warning": "به دلیل بی‌کاری، تا یک دقیقه دیگر از حساب خارج می‌شوید. برای ماندن، صفحه را حرکت دهید یا کلیدی بزنید.", "idle_logout": "به دلیل بی‌کاری از حساب خارج شدید. لطفاً دوباره وارد شوید.", "audit_tenant_create": "ساخت سازمان", "audit_tenant_update": "ویرایش سازمان", "audit_tenant_delete": "حذف سازمان", "audit_tenant_active": "تغییر وضعیت سامانه", "audit_passwords_change": "تغییر رمزها", "audit_card_create": "صدور کارت", "audit_card_update": "ویرایش کارت", "audit_card_delete": "حذف کارت", "audit_cards_bulk_delete": "حذف گروهی کارت‌ها", "audit_card_status": "تغییر وضعیت کارت",
     "stars_of": "از {0} ستاره", "stars_auto": "(بر اساس تعداد کارت‌های صادرشده، خودکار تعیین می‌شود)", "stars_required": "تعداد ستاره‌های روشن را وارد کنید:", "stars_range": "عدد باید بین ۰ تا {0} باشد", "bg_cors_error": "تصویر پس‌زمینه از دامنه دیگری است و اجازه دانلود ندارد. تصویر را روی همین سرور آپلود کنید."
 };
 
@@ -511,16 +520,21 @@ const Icon = ({ name, className = "w-5 h-5" }) => {
     } catch (e) { } return <span aria-hidden="true" dangerouslySetInnerHTML={{ __html: svgString }} className="inline-flex items-center justify-center shrink-0" />;
 };
 
-const BrandingFooter = () => (
-    <div className="mt-8 text-center text-slate-400 text-xs pb-4 print:hidden flex flex-col items-center justify-center w-full">
-        <span className="font-medium tracking-wider opacity-80 mb-1">Powered by Asva Studio</span>
-        <span className="font-bold opacity-80 text-slate-500">توسعه یافته توسط شرکت داده‌پردازان اسوا</span>
-        <a href="https://t.me/+989966697806" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 hover:text-indigo-500 transition-colors opacity-80 hover:opacity-100 mt-2">
-            <Icon name="Phone" className="w-3.5 h-3.5" />
-            <span dir="ltr" className="font-mono text-sm">09966697806</span>
-        </a>
-    </div>
-);
+/** فوتر برند: متن‌ها، تلفن و لینک از «تنظیمات پلتفرم» می‌آیند و می‌توان آن را خاموش کرد. */
+function BrandingFooter({ preview }) {
+    const live = usePlatform().footer; const f = preview || live;
+    if (!f.show || !(f.line1 || f.line2 || f.phone)) return null;
+    const phone = f.phone && (<><Icon name="Phone" className="w-3.5 h-3.5" /><span dir="ltr" className="font-mono text-sm">{f.phone}</span></>);
+    return (
+        <div className="mt-8 text-center text-slate-400 text-xs pb-4 print:hidden flex flex-col items-center justify-center w-full">
+            {f.line1 && <span className="font-medium tracking-wider opacity-80 mb-1" dir="auto">{f.line1}</span>}
+            {f.line2 && <span className="font-bold opacity-80 text-slate-500" dir="auto">{f.line2}</span>}
+            {phone && (f.link
+                ? <a href={f.link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 hover:text-indigo-500 transition-colors opacity-80 hover:opacity-100 mt-2">{phone}</a>
+                : <span className="flex items-center gap-1.5 opacity-80 mt-2">{phone}</span>)}
+        </div>
+    );
+}
 
 class ErrorBoundary extends React.Component {
     constructor(props) { super(props); this.state = { error: null }; }
@@ -1421,6 +1435,7 @@ function AdminCardEditModal({ tenant, card, onClose, onSave, t, globalValidation
 // 6. MAIN SCREENS & APP
 // ==========================================
 function SystemEntry({ mode, tenant, t, langControl, onSuperAdmin, onTenantLogin }) {
+    const plat = usePlatform();
     const [passcode, setPasscode] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
     // قفل موقت پس از تلاش‌های ناموفق: شمارش معکوس تا امکان ورود دوباره
     const [lockUntil, setLockUntil] = useState(0); const [now, setNow] = useState(Date.now());
@@ -1440,7 +1455,7 @@ function SystemEntry({ mode, tenant, t, langControl, onSuperAdmin, onTenantLogin
         }
     };
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen p-4"><div className="glass-strong p-8 rounded-3xl w-full max-w-md relative overflow-hidden flex flex-col"><div className="relative z-10 flex-1 flex flex-col">{langControl && <div className="flex justify-end text-slate-600 mb-2"><LanguageSwitcher control={langControl} /></div>}<div className="flex justify-center mb-6"><LogoImg src={tenant && tenant.logoUrl} alt="Logo" className="h-20 object-contain drop-shadow-2xl rounded-xl" /></div>{tenant && tenant.closedReason && <div role="alert" className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm text-center">{tenant.closedReason}</div>}<h1 className="text-2xl font-bold text-center text-slate-800 mb-2">{tenant ? tenant.orgName : t('portal_title')}</h1><p className="text-center text-slate-600 mb-8 text-sm">{tenant ? (tenant.welcomeText || t('enter_passcode')) : t('enter_passcode')}</p><form onSubmit={handleLogin} className="space-y-4 mb-4"><div><input type="password" aria-label={t('passcode')} value={passcode} onChange={(e) => { setPasscode(e.target.value); setError(''); }} autoComplete="current-password" className="w-full px-4 py-3 bg-white/70 border border-white rounded-xl text-slate-800 text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder={t('passcode')} autoFocus /></div>{error && <p role="alert" className="text-red-600 text-sm text-center">{error}</p>}{lockLeft > 0 && <p role="status" className="text-amber-700 text-sm text-center font-bold">{t('locked_wait', fmtLeft(lockLeft))}</p>}<button type="submit" disabled={busy || !passcode || lockLeft > 0} className="w-full btn-grad py-3 rounded-xl font-bold transition-all">{busy ? t('processing') : t('login')}</button></form><div className="mt-auto pt-6 border-t border-white/60"><BrandingFooter /></div></div></div></div>
+        <div className="flex flex-col items-center justify-center min-h-screen p-4"><div className="glass-strong p-8 rounded-3xl w-full max-w-md relative overflow-hidden flex flex-col"><div className="relative z-10 flex-1 flex flex-col">{langControl && <div className="flex justify-end text-slate-600 mb-2"><LanguageSwitcher control={langControl} /></div>}<div className="flex justify-center mb-6"><LogoImg src={tenant && tenant.logoUrl} alt="Logo" className="h-20 object-contain drop-shadow-2xl rounded-xl" /></div>{tenant && tenant.closedReason && <div role="alert" className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm text-center">{tenant.closedReason}</div>}<h1 className="text-2xl font-bold text-center text-slate-800 mb-2">{tenant ? tenant.orgName : plat.name}</h1><p className="text-center text-slate-600 mb-8 text-sm">{tenant ? (tenant.welcomeText || t('enter_passcode')) : t('enter_passcode')}</p><form onSubmit={handleLogin} className="space-y-4 mb-4"><div><input type="password" aria-label={t('passcode')} value={passcode} onChange={(e) => { setPasscode(e.target.value); setError(''); }} autoComplete="current-password" className="w-full px-4 py-3 bg-white/70 border border-white rounded-xl text-slate-800 text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder={t('passcode')} autoFocus /></div>{error && <p role="alert" className="text-red-600 text-sm text-center">{error}</p>}{lockLeft > 0 && <p role="status" className="text-amber-700 text-sm text-center font-bold">{t('locked_wait', fmtLeft(lockLeft))}</p>}<button type="submit" disabled={busy || !passcode || lockLeft > 0} className="w-full btn-grad py-3 rounded-xl font-bold transition-all">{busy ? t('processing') : t('login')}</button></form><div className="mt-auto pt-6 border-t border-white/60"><BrandingFooter /></div></div></div></div>
     );
 }
 
@@ -1471,7 +1486,7 @@ function TenantLinkModal({ tenant, justPublished, onClose }) {
     );
 }
 
-const AUDIT_ACTIONS = ['login', 'login_failed', 'super_login', 'super_login_failed', 'tenant_create', 'tenant_update', 'tenant_delete', 'tenant_active', 'passwords_change', 'card_create', 'card_update', 'card_delete', 'cards_bulk_delete', 'card_status'];
+const AUDIT_ACTIONS = ['login', 'login_failed', 'super_login', 'super_login_failed', 'super_password_changed', 'super_password_failed', 'platform_settings', 'tenant_create', 'tenant_update', 'tenant_delete', 'tenant_active', 'passwords_change', 'card_create', 'card_update', 'card_delete', 'cards_bulk_delete', 'card_status'];
 const auditDetails = (r, t) => {
     const d = r.details || {}; const parts = [];
     if (d.requester) parts.push(`${t('requester')}: ${d.requester}`);
@@ -1503,42 +1518,145 @@ function AuditLogModal({ tenantId, title, t, lang = 'fa', onClose }) {
 
 const tenantStatus = (tn) => !tn.closedReason ? ['فعال', 'bg-green-50 text-green-700'] : (tn.isActive === false ? ['غیرفعال', 'bg-red-50 text-red-700'] : ['پایان مهلت', 'bg-amber-50 text-amber-700']);
 
-/** تنظیمات کلی پلتفرم: لوگوی پنل سوپرادمین و لوگوی پیش‌فرض سازمان‌هایی که لوگوی خودشان را تعیین نکرده‌اند. */
+/** آپلود یا لینک یک تصویر (لوگو، آیکون تب) با پیش‌نمایش. */
+function ImageSettingField({ id, label, hint, value, onChange, error, maxSize = 512, previewClass = 'w-20 h-20' }) {
+    const [uploading, setUploading] = useState(false);
+    const upload = async (file) => { if (!file) return; setUploading(true); const url = await uploadImageFile(file, { keepTransparency: true, maxSize }); setUploading(false); if (url) onChange(url); };
+    return (
+        <div>
+            <label htmlFor={id} className="text-sm font-bold block mb-1">{label}</label>
+            {hint && <p className="text-xs text-slate-500 mb-2">{hint}</p>}
+            <div className="flex items-center gap-3">
+                <div className={`${previewClass} shrink-0 rounded-2xl bg-white/80 border flex items-center justify-center p-2`}><LogoImg key={value} src={value.trim()} usePlatform={false} alt={`پیش‌نمایش ${label}`} className="max-w-full max-h-full object-contain" /></div>
+                <div className="flex-1 min-w-0 space-y-2">
+                    <div className="flex gap-2">
+                        <label className={`flex items-center justify-center gap-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-3 py-2 rounded-xl text-xs font-bold cursor-pointer shrink-0 ${uploading ? 'opacity-50 animate-pulse pointer-events-none' : ''}`}><Icon name="UploadCloud" className="w-4 h-4" /> {uploading ? 'در حال آپلود…' : 'آپلود'}<input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files[0]; e.target.value = ''; upload(f); }} /></label>
+                        <input id={id} dir="ltr" value={value} onChange={e => onChange(e.target.value)} placeholder="https://..." className="w-full min-w-0 border rounded-xl px-3 py-2 text-sm text-left bg-white/80" aria-invalid={!!error} aria-describedby={error ? `${id}-err` : undefined} />
+                    </div>
+                    {value && <button type="button" onClick={() => onChange('')} className="text-xs text-slate-500 hover:text-red-600 underline">بازگشت به پیش‌فرض</button>}
+                </div>
+            </div>
+            {error && <p id={`${id}-err`} role="alert" className="text-xs text-red-600 mt-1">{error}</p>}
+        </div>
+    );
+}
+
+/** فرم تغییر رمز سوپرادمین (رمز فعلی + رمز جدید دو بار). */
+function SuperPasswordForm() {
+    const [f, setF] = useState({ currentPass: '', newPass: '', repeat: '' }); const [err, setErr] = useState({}); const [busy, setBusy] = useState(false);
+    const set = (k, v) => { setF(p => ({ ...p, [k]: v })); setErr({}); };
+    const strength = f.newPass.length === 0 ? '' : f.newPass.length < 10 ? 'کوتاه' : (/[a-z]/.test(f.newPass) + /[A-Z]/.test(f.newPass) + /\d/.test(f.newPass) + /[^A-Za-z0-9]/.test(f.newPass) >= 3 && f.newPass.length >= 12 ? 'قوی' : 'متوسط');
+    const submit = async (e) => {
+        e.preventDefault();
+        if (f.newPass.length < 10) return setErr({ newPass: 'رمز جدید باید حداقل ۱۰ کاراکتر باشد.' });
+        if (f.newPass !== f.repeat) return setErr({ repeat: 'تکرار رمز با رمز جدید یکی نیست.' });
+        setBusy(true);
+        try { await apiPost('change_super_password', { currentPass: f.currentPass, newPass: f.newPass }); setF({ currentPass: '', newPass: '', repeat: '' }); notifySuccess('رمز سوپرادمین تغییر کرد. از این به بعد با رمز جدید وارد شوید.'); }
+        catch (e2) { setErr({ [e2.field || 'currentPass']: e2.message }); }
+        setBusy(false);
+    };
+    const input = (k, label, ac) => (
+        <div>
+            <label htmlFor={`sp-${k}`} className="text-xs font-bold text-slate-600 block mb-1">{label}</label>
+            <input id={`sp-${k}`} type="password" autoComplete={ac} dir="ltr" value={f[k]} onChange={e => set(k, e.target.value)} className="w-full border rounded-xl px-3 py-2 text-sm bg-white/80" aria-invalid={!!err[k]} aria-describedby={err[k] ? `sp-${k}-err` : undefined} />
+            {err[k] && <p id={`sp-${k}-err`} role="alert" className="text-xs text-red-600 mt-1">{err[k]}</p>}
+        </div>
+    );
+    return (
+        <form onSubmit={submit} className="space-y-3 bg-white/50 border border-white/70 rounded-xl p-4">
+            <label className="text-sm font-bold block">تغییر رمز سوپرادمین</label>
+            {input('currentPass', 'رمز فعلی', 'current-password')}
+            {input('newPass', 'رمز جدید (حداقل ۱۰ کاراکتر)', 'new-password')}
+            {strength && <p className={`text-[11px] -mt-2 ${strength === 'قوی' ? 'text-green-700' : strength === 'متوسط' ? 'text-amber-700' : 'text-red-600'}`}>قدرت رمز: {strength}</p>}
+            {input('repeat', 'تکرار رمز جدید', 'new-password')}
+            <p className="text-[10px] text-slate-500">بعد از تغییر از اینجا، رمز فایل config.php دیگر استفاده نمی‌شود. اگر رمز را فراموش کردید، در phpMyAdmin ردیف superPassHash را از جدول platform_settings پاک کنید تا رمز config.php دوباره فعال شود.</p>
+            <button type="submit" disabled={busy || !f.currentPass || !f.newPass || !f.repeat} className="w-full bg-slate-800 text-white py-2 rounded-xl text-sm font-bold disabled:opacity-50">{busy ? 'در حال تغییر…' : 'تغییر رمز'}</button>
+        </form>
+    );
+}
+
+/** تنظیمات کلی پلتفرم: هویت و ظاهر (نام، لوگو، آیکون تب، فوتر، رنگ‌ها) و امنیت (رمز، خروج خودکار، قفل ورود). */
 function PlatformSettingsModal({ onClose }) {
     useEscape(onClose);
-    const current = usePlatformLogo();
-    const [logo, setLogo] = useState(current); const [uploading, setUploading] = useState(false); const [saving, setSaving] = useState(false); const [error, setError] = useState('');
-    const upload = async (file) => { if (!file) return; setUploading(true); const url = await uploadImageFile(file, { keepTransparency: true, maxSize: 512 }); setUploading(false); if (url) { setLogo(url); setError(''); } };
+    const current = usePlatform();
+    const [tab, setTab] = useState('identity');
+    const [d, setD] = useState(() => ({ ...current, footer: { ...current.footer } }));
+    const [errors, setErrors] = useState({}); const [saving, setSaving] = useState(false);
+    const set = (k, v) => { setD(p => ({ ...p, [k]: v })); setErrors(e => ({ ...e, [k]: undefined })); };
+    const setFooter = (k, v) => { setD(p => ({ ...p, footer: { ...p.footer, [k]: v } })); setErrors(e => ({ ...e, [`footer.${k}`]: undefined })); };
+    const themeProxy = (k) => ({ data: { theme: d[k] }, setData: (fn) => setD(p => ({ ...p, [k]: (typeof fn === 'function' ? fn({ theme: p[k] }) : fn).theme })) });
     const save = async () => {
-        setSaving(true); setError('');
-        try { const r = await apiPost('save_platform_settings', { logoUrl: logo.trim() }); setPlatformLogo(r.platformLogo); notifySuccess('تنظیمات پلتفرم ذخیره شد.'); onClose(); }
-        catch (e) { setError(e.message); }
+        setSaving(true); setErrors({});
+        const payload = { name: d.name, logoUrl: d.logoUrl.trim(), faviconUrl: d.faviconUrl.trim(), footer: d.footer, defaultTheme: d.defaultTheme, superTheme: d.superTheme, idleMinutes: Number(d.idleMinutes), loginMaxAttempts: Number(d.loginMaxAttempts), loginLockMinutes: Number(d.loginLockMinutes) };
+        try { const r = await apiPost('save_platform_settings', payload); setPlatform(r.platform); notifySuccess('تنظیمات پلتفرم ذخیره شد.'); onClose(); }
+        catch (e) {
+            if (e.field) { setErrors({ [e.field]: e.message }); setTab(['idleMinutes', 'loginMaxAttempts', 'loginLockMinutes'].includes(e.field) ? 'security' : 'identity'); }
+            else notifyError(e);
+        }
         setSaving(false);
     };
+    const err = (k) => errors[k] && <p role="alert" className="text-xs text-red-600 mt-1">{errors[k]}</p>;
+    const text = (k, label, opts = {}) => (
+        <div>
+            <label htmlFor={`ps-${k}`} className="text-xs font-bold text-slate-600 block mb-1">{label}</label>
+            <input id={`ps-${k}`} value={opts.value !== undefined ? opts.value : d[k]} onChange={e => (opts.onChange || (v => set(k, v)))(e.target.value)} dir={opts.dir || 'auto'} maxLength={opts.maxLength} placeholder={opts.placeholder} disabled={opts.disabled} className="w-full border rounded-xl px-3 py-2 text-sm bg-white/80 disabled:opacity-50" />
+            {err(opts.errKey || k)}
+        </div>
+    );
+    const num = (k, label, min, max, hint) => (
+        <div>
+            <label htmlFor={`ps-${k}`} className="text-sm font-bold block mb-1">{label}</label>
+            <div className="flex items-center gap-2"><input id={`ps-${k}`} type="number" min={min} max={max} value={d[k]} onChange={e => set(k, e.target.value)} className="w-28 border rounded-xl px-3 py-2 text-sm text-center bg-white/80" dir="ltr" aria-invalid={!!errors[k]} />{hint && <span className="text-xs text-slate-500">{hint}</span>}</div>
+            {err(k)}
+        </div>
+    );
+    const tabBtn = (k, ic, label) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold text-slate-600"><Icon name={ic} className="w-4 h-4" /> {label}</button>;
     return (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-            <div role="dialog" aria-modal="true" aria-label="تنظیمات پلتفرم" className="glass-strong rounded-3xl p-6 w-full max-w-md">
-                <div className="flex justify-between items-center mb-5"><h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Icon name="Settings" className="w-5 h-5" /> تنظیمات پلتفرم</h3><button onClick={onClose} aria-label="بستن" className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full"><Icon name="X" className="w-4 h-4" /></button></div>
-                <label className="text-sm font-bold block mb-1">لوگوی پلتفرم</label>
-                <p className="text-xs text-slate-500 mb-3">در سربرگ پنل سوپرادمین و صفحه ورود نمایش داده می‌شود، و برای سازمان‌هایی که لوگوی خودشان را تعیین نکرده‌اند هم استفاده می‌شود. تصویر مربع با پس‌زمینه شفاف (PNG) بهترین نتیجه را دارد.</p>
-                <div className="flex items-center gap-4 mb-3">
-                    <div className="w-20 h-20 shrink-0 rounded-2xl bg-white/80 border flex items-center justify-center p-2"><LogoImg key={logo} src={logo.trim()} usePlatform={false} alt="پیش‌نمایش لوگو" className="max-w-full max-h-full object-contain" /></div>
-                    <div className="flex flex-col gap-2 flex-1 min-w-0">
-                        <label className={`flex items-center justify-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-3 py-2 rounded-xl text-sm font-bold cursor-pointer ${uploading ? 'opacity-50 animate-pulse pointer-events-none' : ''}`}><Icon name="UploadCloud" className="w-4 h-4" /> {uploading ? 'در حال آپلود…' : 'آپلود تصویر'}<input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files[0]; e.target.value = ''; upload(f); }} /></label>
-                        {logo && <button type="button" onClick={() => { setLogo(''); setError(''); }} className="text-xs text-slate-500 hover:text-red-600 underline">بازگشت به لوگوی پیش‌فرض</button>}
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-start sm:items-center justify-center p-4 overflow-y-auto">
+            <div role="dialog" aria-modal="true" aria-label="تنظیمات پلتفرم" className="glass-strong rounded-3xl p-5 sm:p-6 w-full max-w-2xl my-8">
+                <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Icon name="Settings" className="w-5 h-5" /> تنظیمات پلتفرم</h3><button onClick={onClose} aria-label="بستن" className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full"><Icon name="X" className="w-4 h-4" /></button></div>
+                <div role="tablist" aria-label="بخش‌های تنظیمات" className="view-toggle flex bg-slate-100/80 rounded-xl p-1 mb-5">{tabBtn('identity', 'Palette', 'هویت و ظاهر')}{tabBtn('security', 'ShieldCheck', 'امنیت')}</div>
+
+                {tab === 'identity' && <div className="space-y-5" role="tabpanel">
+                    <div>{text('name', 'نام پلتفرم', { maxLength: 80 })}<p className="text-[11px] text-slate-500 mt-1">در عنوان تب مرورگر، صفحه ورود سوپرادمین و سربرگ پنل نمایش داده می‌شود.</p></div>
+                    <ImageSettingField id="ps-logo" label="لوگوی پلتفرم" hint="در سربرگ پنل سوپرادمین و صفحه ورود، و برای سازمان‌هایی که لوگوی خودشان را ندارند. تصویر مربع با پس‌زمینه شفاف (PNG) بهترین نتیجه را دارد." value={d.logoUrl} onChange={v => set('logoUrl', v)} error={errors.logoUrl} />
+                    <ImageSettingField id="ps-favicon" label="آیکون تب مرورگر (favicon)" hint="تصویر مربع ساده، ترجیحاً PNG حداقل ۶۴×۶۴. اگر خالی بماند، لوگوی پیش‌فرض سامانه استفاده می‌شود." value={d.faviconUrl} onChange={v => set('faviconUrl', v)} error={errors.faviconUrl} maxSize={256} previewClass="w-14 h-14" />
+                    <div className="space-y-3 bg-white/50 border border-white/70 rounded-xl p-4">
+                        <label className="flex items-center gap-2 text-sm font-bold cursor-pointer"><input type="checkbox" checked={d.footer.show} onChange={e => setFooter('show', e.target.checked)} className="accent-indigo-600 w-4 h-4" /> نمایش فوتر در پایین صفحه‌ها</label>
+                        <div className="grid sm:grid-cols-2 gap-3">
+                            {text('line1', 'خط اول', { value: d.footer.line1, onChange: v => setFooter('line1', v), maxLength: 120, disabled: !d.footer.show, errKey: 'footer.line1' })}
+                            {text('line2', 'خط دوم', { value: d.footer.line2, onChange: v => setFooter('line2', v), maxLength: 120, disabled: !d.footer.show, errKey: 'footer.line2' })}
+                            {text('phone', 'تلفن (اختیاری)', { value: d.footer.phone, onChange: v => setFooter('phone', v), maxLength: 30, dir: 'ltr', disabled: !d.footer.show, errKey: 'footer.phone' })}
+                            {text('link', 'لینک تلفن (اختیاری)', { value: d.footer.link, onChange: v => setFooter('link', v), maxLength: 500, dir: 'ltr', placeholder: 'https://t.me/...', disabled: !d.footer.show, errKey: 'footer.link' })}
+                        </div>
+                        {d.footer.show && <div className="rounded-xl border border-dashed border-slate-300 bg-white/40"><p className="text-[10px] text-slate-500 pt-2 text-center">پیش‌نمایش</p><BrandingFooter preview={d.footer} /></div>}
                     </div>
-                </div>
-                <label htmlFor="platform-logo-url" className="text-xs font-bold text-slate-600 block mb-1">یا لینک تصویر</label>
-                <input id="platform-logo-url" dir="ltr" value={logo} onChange={e => { setLogo(e.target.value); setError(''); }} placeholder="https://..." className="w-full border rounded-xl px-3 py-2 text-sm text-left bg-white/80" aria-invalid={!!error} aria-describedby={error ? 'platform-logo-err' : undefined} />
-                {error && <p id="platform-logo-err" role="alert" className="text-xs text-red-600 mt-1">{error}</p>}
-                <div className="flex gap-2 mt-6"><button type="button" onClick={save} disabled={saving || uploading} className="flex-1 btn-grad text-white py-2.5 rounded-xl font-bold">{saving ? 'در حال ذخیره…' : 'ذخیره'}</button><button type="button" onClick={onClose} className="px-5 py-2.5 rounded-xl font-bold bg-white/70 border">انصراف</button></div>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                        <ThemeEditor {...themeProxy('superTheme')} title="رنگ‌های پنل سوپرادمین" hint="پس‌زمینه پنل سوپرادمین و صفحه ورود آن." />
+                        <ThemeEditor {...themeProxy('defaultTheme')} title="رنگ پیش‌فرض سازمان‌های جدید" hint="سازمان‌هایی که از این به بعد ساخته می‌شوند با این رنگ‌ها شروع می‌کنند. رنگ سازمان‌های فعلی تغییر نمی‌کند." />
+                    </div>
+                </div>}
+
+                {tab === 'security' && <div className="space-y-5" role="tabpanel">
+                    <SuperPasswordForm />
+                    <div className="space-y-4 bg-white/50 border border-white/70 rounded-xl p-4">
+                        {num('idleMinutes', 'خروج خودکار پس از بی‌کاری', 0, 1440, 'دقیقه (۰ = خاموش)')}
+                        <p className="text-[11px] text-slate-500 -mt-2">برای همه پنل‌ها (سوپرادمین، مدیر سازمان و کاربر). یک دقیقه قبل از خروج هشدار داده می‌شود و پیش‌نویس ویزارد حفظ می‌شود.</p>
+                        {num('loginMaxAttempts', 'تعداد ورود ناموفق مجاز', 3, 20, 'بار')}
+                        {num('loginLockMinutes', 'مدت قفل ورود پس از آن', 1, 1440, 'دقیقه')}
+                        <p className="text-[11px] text-slate-500 -mt-2">برای هر IP و هر صفحه ورود جداگانه حساب می‌شود.</p>
+                    </div>
+                </div>}
+
+                <div className="flex gap-2 mt-6"><button type="button" onClick={save} disabled={saving} className="flex-1 btn-grad text-white py-2.5 rounded-xl font-bold">{saving ? 'در حال ذخیره…' : 'ذخیره تنظیمات'}</button><button type="button" onClick={onClose} className="px-5 py-2.5 rounded-xl font-bold bg-white/70 border">انصراف</button></div>
+                {tab === 'security' && <p className="text-[10px] text-slate-500 mt-2 text-center">دکمه «ذخیره تنظیمات» برای خروج خودکار و قفل ورود است؛ تغییر رمز دکمه جداگانه دارد.</p>}
             </div>
         </div>
     );
 }
 
 function SuperAdminPanel({ tenants, t, fetchGlobalFonts, fetchGlobalValidations, onNewWizard, onEditWizard, onDuplicateWizard, onDeleteWizard, onRefresh, onLogout, publishedId, onPublishedSeen }) {
-    const validTenants = Array.isArray(tenants) ? tenants : [];
+    const validTenants = Array.isArray(tenants) ? tenants : []; const plat = usePlatform();
     const [showPresetsManager, setShowPresetsManager] = useState(false); const [showFontsManager, setShowFontsManager] = useState(false); const [showValidationsManager, setShowValidationsManager] = useState(false); const [showPlatformSettings, setShowPlatformSettings] = useState(false);
     const rewriteOk = useRewriteOk();
     const [search, setSearch] = useState(''); const [sortBy, setSortBy] = useState('created'); const [linkFor, setLinkFor] = useState(null); const [auditFor, setAuditFor] = useState(null);
@@ -1565,7 +1683,7 @@ function SuperAdminPanel({ tenants, t, fetchGlobalFonts, fetchGlobalValidations,
             {showValidationsManager && <ValidationsManagerModal onClose={() => setShowValidationsManager(false)} fetchGlobalValidations={fetchGlobalValidations} />}
             {linkFor && <TenantLinkModal tenant={linkFor.tenant} justPublished={linkFor.justPublished} onClose={() => setLinkFor(null)} />}
             {auditFor && <AuditLogModal tenantId={auditFor.id} title={auditFor.id ? `گزارش فعالیت «${auditFor.orgName}»` : 'گزارش فعالیت همه‌ی سازمان‌ها'} t={t} onClose={() => setAuditFor(null)} />}
-            <header className="flex flex-col lg:flex-row justify-between items-center mb-6 glass p-4 rounded-2xl gap-4"><div className="flex items-center gap-4"><LogoImg alt="" className="w-12 h-12 object-contain rounded-lg" /><div><h1 className="text-xl font-bold text-slate-800">{t('superadmin_panel')}</h1><p className="text-sm text-slate-500">{t('manage_platforms')} — {validTenants.length} سازمان، {totalCards} کارت</p></div></div><div className="flex items-center gap-2 flex-wrap justify-end"><button onClick={() => setAuditFor({ id: '' })} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="ScrollText" className="w-4 h-4" /> گزارش فعالیت</button><button onClick={() => setShowValidationsManager(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="CheckCircle2" className="w-4 h-4" /> اعتبارسنجی</button><button onClick={() => setShowFontsManager(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="Type" className="w-4 h-4" /> فونت‌ها</button><button onClick={() => setShowPresetsManager(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="Database" className="w-4 h-4" /> {t('base_lists')}</button><button onClick={() => setShowPlatformSettings(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="Settings" className="w-4 h-4" /> تنظیمات پلتفرم</button><button onClick={onLogout} className="flex items-center gap-2 text-slate-600 hover:text-red-500 bg-slate-50 hover:bg-red-50 px-4 py-2 rounded-xl font-bold border"><Icon name="LogOut" className="w-4 h-4" /> {t('logout')}</button></div></header>
+            <header className="flex flex-col lg:flex-row justify-between items-center mb-6 glass p-4 rounded-2xl gap-4"><div className="flex items-center gap-4"><LogoImg alt="" className="w-12 h-12 object-contain rounded-lg" /><div><h1 className="text-xl font-bold text-slate-800">{plat.name}</h1><p className="text-sm text-slate-500">{t('manage_platforms')} — {validTenants.length} سازمان، {totalCards} کارت</p></div></div><div className="flex items-center gap-2 flex-wrap justify-end"><button onClick={() => setAuditFor({ id: '' })} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="ScrollText" className="w-4 h-4" /> گزارش فعالیت</button><button onClick={() => setShowValidationsManager(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="CheckCircle2" className="w-4 h-4" /> اعتبارسنجی</button><button onClick={() => setShowFontsManager(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="Type" className="w-4 h-4" /> فونت‌ها</button><button onClick={() => setShowPresetsManager(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="Database" className="w-4 h-4" /> {t('base_lists')}</button><button onClick={() => setShowPlatformSettings(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="Settings" className="w-4 h-4" /> تنظیمات پلتفرم</button><button onClick={onLogout} className="flex items-center gap-2 text-slate-600 hover:text-red-500 bg-slate-50 hover:bg-red-50 px-4 py-2 rounded-xl font-bold border"><Icon name="LogOut" className="w-4 h-4" /> {t('logout')}</button></div></header>
             <div className="flex flex-col sm:flex-row gap-3 mb-6"><div className="relative flex-1"><Icon name="Search" className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" /><input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="جستجوی سازمان (نام یا شناسه)..." aria-label="جستجوی سازمان" className="w-full pr-10 pl-4 py-2.5 border border-white rounded-xl bg-white/70" /></div><select value={sortBy} onChange={e => setSortBy(e.target.value)} aria-label="مرتب‌سازی" className="border border-white rounded-xl px-3 py-2.5 bg-white/70 text-sm"><option value="created">جدیدترین</option><option value="name">نام</option><option value="cards">بیشترین کارت</option><option value="activity">آخرین فعالیت</option></select></div>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 flex-1">
                 <button type="button" onClick={onNewWizard} className="glass-soft border-2 border-dashed border-indigo-300 rounded-3xl p-8 flex flex-col items-center justify-center text-indigo-700 hover:bg-white/60 transition-colors cursor-pointer min-h-[220px]"><Icon name="Plus" className="w-12 h-12 mb-3" /><span className="font-bold text-lg">{t('new_org')}</span><span className="text-sm opacity-80 text-center mt-2">{t('new_org_desc')}</span></button>
@@ -1692,13 +1810,13 @@ function PrintSizeEditor({ data, setData }) {
 }
 
 /** انتخاب رنگ‌های گرادیانت پس‌زمینه‌ی پنل این سازمان. */
-function ThemeEditor({ data, setData }) {
+function ThemeEditor({ data, setData, title = 'رنگ‌های پس‌زمینه‌ی پنل', hint = 'این رنگ‌ها در صفحه‌ی ورود، فرم، داشبورد و صفحه‌ی استعلام همین سازمان به‌صورت گرادیانت سیال نمایش داده می‌شوند.' }) {
     const th = themeOf(data);
     const setColor = (k, v) => setData(p => ({ ...p, theme: { ...themeOf(p), [k]: v } }));
     const isActive = (pr) => pr.c1 === th.c1 && pr.c2 === th.c2 && pr.c3 === th.c3;
     return (
         <div className="space-y-3 bg-white/50 border border-white/70 rounded-xl p-4">
-            <label className="text-sm font-bold block">رنگ‌های پس‌زمینه‌ی پنل</label>
+            <label className="text-sm font-bold block">{title}</label>
             <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="پالت‌های آماده">{THEME_PRESETS.map(pr => (
                 <button key={pr.name} type="button" role="radio" aria-checked={isActive(pr)} title={pr.name} aria-label={pr.name} onClick={() => setData(p => ({ ...p, theme: { c1: pr.c1, c2: pr.c2, c3: pr.c3 } }))} className={`w-9 h-9 rounded-full border-2 transition-transform hover:scale-110 ${isActive(pr) ? 'border-slate-800 scale-110' : 'border-white'}`} style={{ backgroundImage: `linear-gradient(135deg, ${pr.c1}, ${pr.c2}, ${pr.c3})` }} />
             ))}</div>
@@ -1706,7 +1824,7 @@ function ThemeEditor({ data, setData }) {
                 <label key={k} className="flex flex-col items-center gap-1 text-[11px] text-slate-600"><input type="color" value={th[k]} onChange={e => setColor(k, e.target.value)} className="w-full h-9 rounded-lg cursor-pointer border border-white bg-transparent" aria-label={l} /><span dir="ltr" className="font-mono">{th[k]}</span></label>
             ))}</div>
             <div className="h-3 rounded-full" style={{ backgroundImage: `linear-gradient(90deg, ${th.c1}, ${th.c2}, ${th.c3})` }} aria-hidden="true" />
-            <p className="text-[10px] text-slate-500">این رنگ‌ها در صفحه‌ی ورود، فرم، داشبورد و صفحه‌ی استعلام همین سازمان به‌صورت گرادیانت سیال نمایش داده می‌شوند.</p>
+            {hint && <p className="text-[10px] text-slate-500">{hint}</p>}
         </div>
     );
 }
@@ -1832,7 +1950,7 @@ const writeWizardDraft = (id, draft) => { try { localStorage.setItem(wizardDraft
 const removeWizardDraft = (id) => { try { localStorage.removeItem(wizardDraftKey(id)); } catch (e) { } };
 
 function SuperAdminWizard({ initialData, globalFonts, globalValidations, t, onComplete, onCancel }) {
-    const [data, setData, history] = useUndoableState(() => ({ ...INITIAL_WIZARD_DATA, ...(initialData || {}), adminPass: '', publicPass: '' }));
+    const [data, setData, history] = useUndoableState(() => ({ ...INITIAL_WIZARD_DATA, theme: { ...platformState.defaultTheme }, ...(initialData || {}), adminPass: '', publicPass: '' }));
     const isEdit = !!data.id;
     const [step, setStep] = useState(1); const [isSaving, setIsSaving] = useState(false); const [previewFormData, setPreviewFormData] = useState({}); const [stepError, setStepError] = useState(''); const [selectedFieldId, setSelectedFieldId] = useState(null); const [dbPresets, setDbPresets] = useState([]); const [uploadingLogo, setUploadingLogo] = useState(false);
     // آیا رمزها روی سرور تعیین شده‌اند (برای ویرایش: خالی گذاشتن = بدون تغییر)
@@ -2354,7 +2472,7 @@ function CardPlatform() {
         if (params.get('verify')) { setAppState('VERIFY'); return; }
         (async () => {
             try {
-                const session = await apiGet('get_session'); setPlatformLogo(session.platformLogo);
+                const session = await apiGet('get_session'); setPlatform(session.platform);
                 if (orgKey) {
                     // آدرس می‌تواند شناسه یا آدرس اختصاصی باشد؛ از اینجا به بعد شناسه‌ی واقعی استفاده می‌شود
                     const pub = await apiGet('get_tenant_public', { id: orgKey }); const orgId = pub.id;
@@ -2389,8 +2507,42 @@ function CardPlatform() {
     useEffect(() => { document.documentElement.dir = isRtl ? 'rtl' : 'ltr'; document.documentElement.lang = tLang; }, [isRtl, tLang]);
     // رنگ‌های گرادیانت: پنل‌های سازمان با رنگ‌های همان سازمان، سوپرادمین با رنگ پیش‌فرض
     const inTenantArea = systemMode === 'TENANT_PORTAL';
-    const theme = inTenantArea ? themeOf(tenantInfo) : DEFAULT_THEME;
+    const platform = usePlatform();
+    const theme = inTenantArea ? themeOf(tenantInfo) : themeOf({ theme: platform.superTheme });
     useEffect(() => { const st = document.documentElement.style; st.setProperty('--g1', theme.c1); st.setProperty('--g2', theme.c2); st.setProperty('--g3', theme.c3); }, [theme.c1, theme.c2, theme.c3]);
+    // عنوان تب و آیکون تب از تنظیمات پلتفرم (در پنل سازمان: نام سازمان — نام پلتفرم)
+    useEffect(() => { document.title = inTenantArea && tenantInfo.orgName ? `${tenantInfo.orgName} — ${platform.name}` : platform.name; }, [inTenantArea, tenantInfo.orgName, platform.name]);
+    useEffect(() => {
+        let link = document.getElementById('app-favicon');
+        if (!link) { link = document.createElement('link'); link.id = 'app-favicon'; link.rel = 'icon'; document.head.appendChild(link); }
+        link.href = platform.faviconUrl || DEFAULT_LOGO;
+    }, [platform.faviconUrl]);
+    // خروج خودکار پس از بی‌کاری: فعالیت در هر تب (از طریق localStorage) شمرده می‌شود و سرور با ping در جریان می‌ماند.
+    // سرور هم همین قانون را مستقل اجرا می‌کند؛ اینجا فقط برای هشدار به‌موقع و برگشت تمیز به صفحه ورود است.
+    const loggedIn = ['SUPER_ADMIN', 'WIZARD', 'TENANT_FORM', 'TENANT_DASHBOARD'].includes(appState);
+    const idleTenantId = systemMode === 'TENANT_PORTAL' && currentTenant ? currentTenant.id : '';
+    useEffect(() => {
+        const idleMs = (Number(platform.idleMinutes) || 0) * 60000;
+        if (!loggedIn || idleMs <= 0) return;
+        const KEY = 'cp_last_activity'; const pingEvery = Math.min(5 * 60000, idleMs / 3);
+        const st = { last: Date.now(), lastPing: Date.now(), warned: false };
+        const store = (n) => { try { localStorage.setItem(KEY, String(n)); } catch (e) { } };
+        const lastActivity = () => { let v = 0; try { v = Number(localStorage.getItem(KEY)) || 0; } catch (e) { } return Math.max(v, st.last); };
+        store(st.last);
+        const mark = () => {
+            const n = Date.now(); if (n - st.last < 5000) return;
+            st.last = n; st.warned = false; store(n);
+            if (n - st.lastPing > pingEvery) { st.lastPing = n; apiGet('ping').catch(() => { }); }
+        };
+        const events = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'scroll'];
+        events.forEach(ev => window.addEventListener(ev, mark, { passive: true, capture: true }));
+        const timer = setInterval(() => {
+            const left = idleMs - (Date.now() - lastActivity());
+            if (left <= 0) { clearInterval(timer); logout(idleTenantId || undefined); notify(t('idle_logout'), 'warning'); }
+            else if (left <= 60000 && !st.warned) { st.warned = true; notify(t('idle_warning'), 'warning'); }
+        }, 10000);
+        return () => { clearInterval(timer); events.forEach(ev => window.removeEventListener(ev, mark, { capture: true })); };
+    }, [loggedIn, platform.idleMinutes, idleTenantId]);
 
     if (appState === 'LOADING') return <><LiquidBackground /><div className="loader-container relative z-10"><div className="spinner"></div><div className="loading-text">در حال راه‌اندازی پلتفرم...</div></div></>;
     if (appState === 'VERIFY') return <VerifyPage code={new URLSearchParams(window.location.search).get('verify')} dicts={dicts} />;

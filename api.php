@@ -84,6 +84,8 @@ $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SER
 session_name('CARDPLATFORM');
 session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'secure' => $isHttps, 'httponly' => true, 'samesite' => 'Strict']);
 ini_set('session.use_strict_mode', '1');
+// خروج پس از بی‌کاری را خود برنامه کنترل می‌کند (تنظیمات پلتفرم)؛ پاک‌سازی سشن PHP نباید زودتر از آن کاربر را بیرون کند
+ini_set('session.gc_maxlifetime', '43200');
 session_start();
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -149,17 +151,20 @@ function throttle_check(PDO $pdo, string $scope): string {
     return $key;
 }
 function throttle_fail(PDO $pdo, string $key): void {
-    global $config;
-    $max = (int)($config['login_max_attempts'] ?? 5); $lock = (int)($config['login_lock_seconds'] ?? 900);
+    $ps = platform_settings($pdo);
+    $max = (int)$ps['loginMaxAttempts']; $lock = (int)$ps['loginLockMinutes'] * 60;
     $pdo->prepare("INSERT INTO login_attempts (k, attempts) VALUES (?, 1) ON DUPLICATE KEY UPDATE attempts = attempts + 1")->execute([$key]);
-    $pdo->prepare("UPDATE login_attempts SET locked_until = DATE_ADD(NOW(), INTERVAL ? SECOND), attempts = 0 WHERE k = ? AND attempts >= ?")->execute([$lock, $key, $max]);
+    $stmt = $pdo->prepare("UPDATE login_attempts SET locked_until = DATE_ADD(NOW(), INTERVAL ? SECOND), attempts = 0 WHERE k = ? AND attempts >= ?");
+    $stmt->execute([$lock, $key, $max]);
     usleep(300000);
+    // همان تلاشی که قفل را فعال کرد، پیام قفل (با زمان باقی‌مانده) می‌گیرد، نه «رمز اشتباه»
+    if ($stmt->rowCount() > 0) respond(['error' => 'تعداد تلاش‌های ناموفق زیاد بود. ورود به‌طور موقت قفل شده است.', 'retryAfter' => $lock], 429);
 }
 function throttle_clear(PDO $pdo, string $key): void { $pdo->prepare("DELETE FROM login_attempts WHERE k = ?")->execute([$key]); }
 
 function session_info(): array {
     global $pdo;
-    return ['super' => is_super(), 'tenants' => (object)($_SESSION['tenants'] ?? []), 'platformLogo' => get_setting($pdo, 'logoUrl')];
+    return ['super' => is_super(), 'tenants' => (object)($_SESSION['tenants'] ?? []), 'platform' => platform_public(platform_settings($pdo), is_super())];
 }
 
 // --- تنظیمات کلی پلتفرم (مثل لوگوی پنل سوپرادمین و لوگوی پیش‌فرض سازمان‌ها) ---
@@ -176,6 +181,45 @@ function set_setting(PDO $pdo, string $key, string $value): void {
     ensure_settings_table($pdo);
     $pdo->prepare("INSERT INTO platform_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)")->execute([$key, $value]);
 }
+/** تنظیمات پیش‌فرض پلتفرم (هر مقداری که سوپرادمین ذخیره نکرده باشد از اینجا می‌آید). */
+function platform_defaults(): array {
+    global $config;
+    return [
+        'name' => 'پلتفرم یکپارچه صدور کارت',
+        'logoUrl' => '', 'faviconUrl' => '',
+        'footer' => ['show' => true, 'line1' => 'Powered by Asva Studio', 'line2' => 'توسعه یافته توسط شرکت داده‌پردازان اسوا', 'phone' => '09966697806', 'link' => 'https://t.me/+989966697806'],
+        'defaultTheme' => DEFAULT_THEME, 'superTheme' => DEFAULT_THEME,
+        'idleMinutes' => 60,
+        'loginMaxAttempts' => max(3, min(20, (int)($config['login_max_attempts'] ?? 5))),
+        'loginLockMinutes' => max(1, min(1440, (int)round(((int)($config['login_lock_seconds'] ?? 900)) / 60))),
+    ];
+}
+function platform_settings(PDO $pdo): array {
+    static $cache = null; if ($cache !== null) return $cache;
+    $out = platform_defaults();
+    $legacyLogo = get_setting($pdo, 'logoUrl'); if ($legacyLogo !== '') $out['logoUrl'] = $legacyLogo;
+    $saved = json_decode(get_setting($pdo, 'platform'), true);
+    if (is_array($saved)) {
+        foreach ($out as $k => $v) {
+            if (!array_key_exists($k, $saved)) continue;
+            $out[$k] = is_array($v) ? array_merge($v, is_array($saved[$k]) ? array_intersect_key($saved[$k], $v) : []) : $saved[$k];
+        }
+    }
+    return $cache = $out;
+}
+/** نسخه‌ی قابل ارسال به مرورگر؛ تنظیمات امنیتی فقط برای سوپرادمین. */
+function platform_public(array $ps, bool $super): array {
+    $pub = array_intersect_key($ps, array_flip(['name', 'logoUrl', 'faviconUrl', 'footer', 'defaultTheme', 'superTheme', 'idleMinutes']));
+    if ($super) { $pub['loginMaxAttempts'] = $ps['loginMaxAttempts']; $pub['loginLockMinutes'] = $ps['loginLockMinutes']; }
+    return $pub;
+}
+/** هش رمز سوپرادمین: رمزی که از پنل تعیین شده، وگرنه رمز فایل پیکربندی. */
+function super_password_hash(PDO $pdo): string {
+    global $config;
+    $h = get_setting($pdo, 'superPassHash');
+    return $h !== '' ? $h : (string)($config['superadmin_password_hash'] ?? '');
+}
+
 /** آدرس تصویر مجاز: فایل آپلودشده‌ی همین سامانه یا لینک http(s). */
 function valid_image_url(string $url): bool {
     if (preg_match('#^uploads/images/[a-f0-9]{32}\.(jpg|png|webp|gif)$#', $url)) return true;
@@ -597,6 +641,16 @@ function valid_asset_url(string $url): bool {
 }
 
 // ==========================================
+// 8.5. خروج خودکار پس از بی‌کاری
+// ==========================================
+if (!empty($_SESSION['super']) || !empty($_SESSION['tenants'])) {
+    $idle = (int)platform_settings($pdo)['idleMinutes'];
+    $last = (int)($_SESSION['last_activity'] ?? time());
+    if ($idle > 0 && time() - $last > $idle * 60) { $_SESSION = []; session_regenerate_id(true); }
+}
+$_SESSION['last_activity'] = time();
+
+// ==========================================
 // 9. مسیریابی
 // ==========================================
 $routes = [
@@ -604,9 +658,9 @@ $routes = [
     'GET get_session' => function () { respond(session_info()); },
     'POST login_super' => function () use ($pdo, $input, $config) {
         $key = throttle_check($pdo, 'super');
-        $hash = (string)($config['superadmin_password_hash'] ?? '');
+        $hash = super_password_hash($pdo);
         $pass = is_string($input['passcode'] ?? null) ? $input['passcode'] : '';
-        if ($hash === '' || $pass === '' || !password_verify($pass, $hash)) { throttle_fail($pdo, $key); audit($pdo, '', 'super_login_failed'); fail('رمز وارد شده معتبر نیست.', 401); }
+        if ($hash === '' || $pass === '' || !password_verify($pass, $hash)) { audit($pdo, '', 'super_login_failed'); throttle_fail($pdo, $key); fail('رمز وارد شده معتبر نیست.', 401); }
         throttle_clear($pdo, $key);
         session_regenerate_id(true);
         $_SESSION['super'] = true;
@@ -624,7 +678,7 @@ $routes = [
         $role = null;
         if ($pass !== '' && !empty($t['adminPassHash']) && password_verify($pass, $t['adminPassHash'])) $role = 'ADMIN';
         elseif ($pass !== '' && !empty($t['publicPassHash']) && password_verify($pass, $t['publicPassHash'])) $role = 'USER';
-        if ($role === null) { throttle_fail($pdo, $key); audit($pdo, $orgId, 'login_failed'); fail('کد وارد شده معتبر نیست.', 401); }
+        if ($role === null) { audit($pdo, $orgId, 'login_failed'); throttle_fail($pdo, $key); fail('کد وارد شده معتبر نیست.', 401); }
         throttle_clear($pdo, $key);
         // سامانه‌ی غیرفعال/منقضی: کاربران عادی وارد نمی‌شوند؛ مدیر سازمان فقط برای مشاهده و خروجی وارد می‌شود
         $closed = tenant_closed_reason($t);
@@ -677,11 +731,54 @@ $routes = [
     'GET ping' => function () { respond(['ok' => true]); },
     'POST save_platform_settings' => function () use ($pdo, $input) {
         require_super();
-        $logo = trim(in_str($input, 'logoUrl', 1000));
-        if ($logo !== '' && !valid_image_url($logo)) fail_field('لینک تصویر نامعتبر است. یک فایل آپلود کنید یا لینکی که با https:// شروع می‌شود وارد کنید.', 'logoUrl');
-        set_setting($pdo, 'logoUrl', $logo);
-        audit($pdo, '', 'platform_settings', '', ['logoUrl' => $logo]);
-        respond(['success' => true, 'platformLogo' => $logo]);
+        $cur = platform_settings($pdo); $new = $cur;
+        // فقط فیلدهایی که فرستاده شده‌اند تغییر می‌کنند
+        if (array_key_exists('name', $input)) {
+            $new['name'] = trim(preg_replace('/\s+/u', ' ', in_str($input, 'name', 80)));
+            if ($new['name'] === '') fail_field('نام پلتفرم نمی‌تواند خالی باشد.', 'name');
+        }
+        foreach (['logoUrl' => 'لوگو', 'faviconUrl' => 'آیکون تب'] as $k => $label) {
+            if (!array_key_exists($k, $input)) continue;
+            $v = trim(in_str($input, $k, 1000));
+            if ($v !== '' && !valid_image_url($v)) fail_field("لینک {$label} نامعتبر است. یک فایل آپلود کنید یا لینکی که با https:// شروع می‌شود وارد کنید.", $k);
+            $new[$k] = $v;
+        }
+        if (isset($input['footer']) && is_array($input['footer'])) {
+            $f = $input['footer'];
+            $phone = trim(in_str($f, 'phone', 30));
+            if ($phone !== '' && !preg_match('/^[0-9+\-\s()]{3,30}$/', $phone)) fail_field('شماره تلفن فوتر فقط می‌تواند عدد، فاصله، + و - داشته باشد.', 'footer.phone');
+            $link = trim(in_str($f, 'link', 500));
+            if ($link !== '' && !(preg_match('#^https?://[^\s"\'<>]+$#i', $link) && filter_var($link, FILTER_VALIDATE_URL))) fail_field('لینک فوتر باید با https:// شروع شود.', 'footer.link');
+            $new['footer'] = ['show' => ($f['show'] ?? true) !== false, 'line1' => trim(in_str($f, 'line1', 120)), 'line2' => trim(in_str($f, 'line2', 120)), 'phone' => $phone, 'link' => $link];
+        }
+        foreach (['defaultTheme', 'superTheme'] as $k) if (array_key_exists($k, $input)) $new[$k] = sanitize_theme($input[$k]);
+        $ranges = ['idleMinutes' => [0, 1440, 'مدت بی‌کاری باید بین ۰ تا ۱۴۴۰ دقیقه باشد (۰ = خاموش).'], 'loginMaxAttempts' => [3, 20, 'تعداد تلاش ناموفق باید بین ۳ تا ۲۰ باشد.'], 'loginLockMinutes' => [1, 1440, 'مدت قفل باید بین ۱ تا ۱۴۴۰ دقیقه باشد.']];
+        foreach ($ranges as $k => [$min, $max, $msg]) {
+            if (!array_key_exists($k, $input)) continue;
+            if (!is_numeric($input[$k]) || (int)$input[$k] != $input[$k] || (int)$input[$k] < $min || (int)$input[$k] > $max) fail_field($msg, $k);
+            $new[$k] = (int)$input[$k];
+        }
+        set_setting($pdo, 'platform', json_encode($new, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        if (array_key_exists('logoUrl', $input)) set_setting($pdo, 'logoUrl', $new['logoUrl']);
+        $changed = array_keys(array_filter($new, fn($v, $k) => $v !== $cur[$k], ARRAY_FILTER_USE_BOTH));
+        audit($pdo, '', 'platform_settings', '', ['changed' => $changed]);
+        respond(['success' => true, 'platform' => platform_public($new, true)]);
+    },
+    'POST change_super_password' => function () use ($pdo, $input) {
+        require_super();
+        $key = throttle_check($pdo, 'super');
+        $current = is_string($input['currentPass'] ?? null) ? $input['currentPass'] : '';
+        $next = is_string($input['newPass'] ?? null) ? $input['newPass'] : '';
+        $hash = super_password_hash($pdo);
+        if ($current === '' || $hash === '' || !password_verify($current, $hash)) { audit($pdo, '', 'super_password_failed'); throttle_fail($pdo, $key); fail_field('رمز فعلی درست نیست.', 'currentPass'); }
+        if (mb_strlen($next) < 10) fail_field('رمز جدید باید حداقل ۱۰ کاراکتر باشد.', 'newPass');
+        if (mb_strlen($next) > 200) fail_field('رمز جدید خیلی طولانی است.', 'newPass');
+        if ($next === $current) fail_field('رمز جدید باید با رمز فعلی فرق داشته باشد.', 'newPass');
+        throttle_clear($pdo, $key);
+        set_setting($pdo, 'superPassHash', password_hash($next, PASSWORD_DEFAULT));
+        session_regenerate_id(true);
+        audit($pdo, '', 'super_password_changed');
+        respond(['success' => true]);
     },
     'GET check_slug' => function () use ($pdo) {
         require_super();
