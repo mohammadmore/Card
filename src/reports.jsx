@@ -10,8 +10,9 @@ const { useState, useMemo, useRef } = React;
 const SERIES = '#2a78d6';
 const CATEGORICAL = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4'];
 const OTHER_COLOR = '#a8a7a1';
-const MUTED_BAR = '#d6d5d0';
-const GRID = '#e6e5e0';
+// در حالت تیره این سه رنگ از متغیرهای CSS (--viz-*) می‌آیند
+const MUTED_BAR = 'var(--viz-muted, #d6d5d0)';
+const GRID = 'var(--viz-grid, #e6e5e0)';
 const PIE_SLICES = 5;   // بیشتر از این در «سایر» جمع می‌شود
 const BAR_ROWS = 12;
 
@@ -160,9 +161,9 @@ function Donut({ rows, total, fmt, pct, selectedKey, onPick, t }) {
         <div ref={wrapRef} className="relative flex flex-col sm:flex-row items-center gap-4" onMouseLeave={() => { setTip(null); setHover(null); }}>
             <svg viewBox="0 0 180 180" className="w-40 h-40 shrink-0" role="img" aria-label={slices.map(s => `${s.label}: ${pct(s.count)}`).join('، ')}>
                 {arcs.map(s => (
-                    <path key={s.key || '__empty'} d={s.path} fill={s.color} stroke="#fff" strokeWidth="2" strokeLinejoin="round"
+                    <path key={s.key || '__empty'} d={s.path} fill={s.color} strokeWidth="2" strokeLinejoin="round"
                         opacity={(selectedKey !== undefined && selectedKey !== s.key) || (hover && hover !== s.key) ? 0.35 : 1}
-                        style={{ cursor: s.rest ? 'default' : 'pointer', transition: 'opacity .15s' }}
+                        style={{ stroke: 'var(--viz-surface, #fff)', cursor: s.rest ? 'default' : 'pointer', transition: 'opacity .15s' }}
                         onMouseMove={e => show(s, e)} onClick={() => !s.rest && onPick(s.key)} />
                 ))}
                 <text x={C} y={C - 2} textAnchor="middle" className="fill-slate-800" style={{ fontSize: 22, fontWeight: 700 }}>{fmt(total)}</text>
