@@ -5,6 +5,7 @@ import { canvasesToPdf, downloadBlob } from './pdf.js';
 import { CardShowcase3D } from './showcase.jsx';
 import { ReportsPanel } from './reports.jsx';
 import JSZip from 'jszip';
+import { readSpreadsheet, writeXlsx } from './xlsx.js';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -176,7 +177,13 @@ const getFieldError = (f, val, t, globalValidations) => f.type === 'text' ? (get
 /** المان‌های ستاره با ورودی کاربر که خالی مانده‌اند (برای پیام «الزامی» هنگام ثبت). */
 const missingStarsField = (fields, formData) => fields.find(f => f.type === 'stars' && f.litSource !== 'issued' && (formData[f.id] === undefined || formData[f.id] === ''));
 // فیلدهایی که خودکار پر می‌شوند (QR استعلام، تاریخ صدور/انقضا) در فرم نمایش داده نمی‌شوند
-const getVisibleFields = (fields, config) => (fields || []).filter(f => !(isSingleSided(config) && f.side === 'back')).filter(f => !((f.type === 'barcode' || f.type === 'qrcode') && f.linkedFieldId) && !(f.type === 'text' && f.linkedFieldId && !f.linkedColumn) && !(f.type === 'qrcode' && f.qrSource === 'verify') && !(f.type === 'date' && f.dateSource && f.dateSource !== 'input'));
+/** ترتیب فیلدها در فرم (مستقل از ترتیب لایه‌ها روی کارت): فیلدهایی که در formOrder نیستند به ترتیب طراحی در انتها می‌آیند. */
+const applyFormOrder = (fields, order) => {
+    if (!Array.isArray(order) || !order.length) return fields;
+    const idx = new Map(order.map((id, i) => [id, i])); const rank = (f, i) => (idx.has(f.id) ? idx.get(f.id) : order.length + i);
+    return fields.map((f, i) => [f, rank(f, i)]).sort((a, b) => a[1] - b[1]).map(x => x[0]);
+};
+const getVisibleFields = (fields, config) => applyFormOrder((fields || []).filter(f => !(isSingleSided(config) && f.side === 'back')).filter(f => !((f.type === 'barcode' || f.type === 'qrcode') && f.linkedFieldId) && !(f.type === 'text' && f.linkedFieldId && !f.linkedColumn) && !(f.type === 'qrcode' && f.qrSource === 'verify') && !(f.type === 'date' && f.dateSource && f.dateSource !== 'input')), config && config.formOrder);
 // --- آدرس پایه‌ی برنامه و آدرس اختصاصی سازمان (/superadmin/acme یا ?org=acme) ---
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 const RESERVED_SLUGS = ['assets', 'uploads', 'tools', 'src', 'api', 'index', 'admin', 'superadmin', 'node_modules', 'verify', 'login', 'logout', 'public', 'static'];
@@ -261,7 +268,7 @@ const handleTextChange = (e, field, setFormData, setWarnings, t) => {
 const csvCell = (v) => { let s = v === null || v === undefined ? '' : String(v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return `"${s.replace(/"/g, '""')}"`; };
 const exportToCSV = (cards, tenant, t) => {
     if (cards.length === 0) return notify(t('no_export_data'));
-    const fields = tenant.fields || [];
+    const fields = applyFormOrder(tenant.fields || [], tenant.formOrder);
     const rows = [[t('row_num'), t('issue_date'), t('requester'), t('status'), t('expires_at'), ...fields.map(f => f.label)]];
     cards.forEach((c, idx) => rows.push([idx + 1, c.issuedAt, c.requesterName, t(`status_${c.status || 'active'}`), c.expiresAt || '', ...fields.map(f => { const val = (c.cardData || {})[f.id] || ''; return f.type === 'photo' && val ? '[IMAGE]' : val; })]));
     const csv = '﻿' + rows.map(r => r.map(csvCell).join(',')).join('\n');
@@ -524,7 +531,7 @@ const Icon = ({ name, className = "w-5 h-5" }) => {
 function BrandingFooter({ preview }) {
     const live = usePlatform().footer; const f = preview || live;
     if (!f.show || !(f.line1 || f.line2 || f.phone)) return null;
-    const phone = f.phone && (<><Icon name="Phone" className="w-3.5 h-3.5" /><span dir="ltr" className="font-mono text-sm">{f.phone}</span></>);
+    const phone = f.phone && (<><Icon name="Phone" className="w-3.5 h-3.5" /><span dir="ltr" className="text-sm">{f.phone}</span></>);
     return (
         <div className="mt-8 text-center text-slate-400 text-xs pb-4 print:hidden flex flex-col items-center justify-center w-full">
             {f.line1 && <span className="font-medium tracking-wider opacity-80 mb-1" dir="auto">{f.line1}</span>}
@@ -1352,21 +1359,154 @@ const ModalShell = ({ title, icon, onClose, wide, children }) => { useEscape(onC
     <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"><div role="dialog" aria-modal="true" aria-label={title} className={`glass-strong rounded-3xl p-6 w-full ${wide ? 'max-w-4xl max-h-[90vh]' : 'max-w-2xl'} my-8 shadow-2xl flex flex-col`}><div className="flex justify-between items-center border-b pb-4 mb-4"><h3 className="text-xl font-bold flex items-center gap-2"><Icon name={icon} /> {title}</h3><button aria-label="بستن" onClick={onClose} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full"><Icon name="X" className="w-5 h-5" /></button></div><div className="flex-1 overflow-y-auto min-h-0">{children}</div></div></div>
 ); };
 
+// --- لیست‌های پایه ↔ اکسل: ستون A «نمایش در فرم»، ستون B «چاپ روی کارت»، ستون‌های بعدی = ستون‌های وابسته ---
+const PRESET_HEADERS = ['نمایش در فرم', 'چاپ روی کارت'];
+const PRESET_HEADER_WORDS = ['نمایش در فرم', 'نمایش', 'عنوان', 'نام', 'گزینه', 'مقدار', 'display', 'title', 'name', 'option', 'value', 'label'];
+const normCell = (s) => normalizeFa(String(s ?? '')).replace(/\s+/g, ' ').trim();
+const optKey = (s) => normCell(s).toLowerCase();
+const presetToRows = (p) => {
+    const cols = p.cols || [];
+    return [[...PRESET_HEADERS, ...cols], ...(p.options || []).map(o => [o.display || '', o.print || '', ...cols.map(c => (o.colValues || {})[c] || '')])];
+};
+/** ردیف‌های فایل → گزینه‌ها و ستون‌ها. ردیف عنوان (اگر باشد) خودکار تشخیص داده می‌شود؛ تکراری‌ها و ردیف‌های خالی کنار گذاشته می‌شوند. */
+const rowsToPreset = (rows) => {
+    const clean = rows.map(r => (r || []).map(normCell)).filter(r => r.some(Boolean));
+    if (!clean.length) return { options: [], cols: [], empty: 0, dup: 0, header: false };
+    const first = clean[0];
+    const header = PRESET_HEADER_WORDS.includes(optKey(first[0])) || optKey(first[1]) === optKey(PRESET_HEADERS[1]);
+    const body = header ? clean.slice(1) : clean;
+    const width = Math.max(header ? first.length : 0, ...body.map(r => r.length));
+    const cols = Array.from({ length: Math.max(0, width - 2) }, (_, i) => (header && first[i + 2]) || `ستون ${i + 1}`);
+    const seen = new Set(); const options = []; let empty = 0; let dup = 0;
+    body.forEach(r => {
+        if (!r[0]) { empty++; return; }
+        const k = optKey(r[0]); if (seen.has(k)) { dup++; return; } seen.add(k);
+        const colValues = {}; cols.forEach((c, i) => { if (r[i + 2]) colValues[c] = r[i + 2]; });
+        options.push({ display: r[0], print: r[1] || '', colValues });
+    });
+    return { options, cols, empty, dup, header };
+};
+const keyFromFileName = (name) => {
+    const base = String(name || '').replace(/\.[^.]+$/, '').toUpperCase().replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+    return base || `LIST_${Date.now().toString(36).toUpperCase()}`;
+};
+const downloadPresetXlsx = async (p) => {
+    try { downloadBlob(await writeXlsx(presetToRows(p), { sheetName: p.title || p.preset_key }), `${safeFileName(p.title || p.preset_key || 'list')}.xlsx`); }
+    catch (e) { notifyError(e, 'ساخت فایل اکسل انجام نشد.'); }
+};
+const readPresetFile = async (file) => {
+    try { return rowsToPreset(await readSpreadsheet(file)); }
+    catch (e) { notify(e.code === 'xls' ? 'فرمت قدیمی xls پشتیبانی نمی‌شود. فایل را در اکسل با «Save As» و فرمت xlsx یا CSV ذخیره کنید.' : 'فایل خوانده نشد. یک فایل اکسل (xlsx) یا CSV انتخاب کنید.', 'error'); return null; }
+};
+
 function PresetsManagerModal({ onClose }) {
     const [presets, setPresets] = useState([]); const [loading, setLoading] = useState(true); const [editing, setEditing] = useState(null);
+    const [pending, setPending] = useState(null); // ورود اکسل به لیستی که گزینه دارد: منتظر انتخاب «افزودن» یا «جایگزینی»
     const fetchPresets = () => { setLoading(true); apiGet('get_presets').then(d => setPresets(Array.isArray(d) ? d : [])).catch(e => notifyError(e)).finally(() => setLoading(false)); };
     useEffect(() => { fetchPresets(); }, []);
     const handleDelete = async (id) => { if (!(await askConfirm('این مورد حذف شود؟', { danger: true, okText: 'حذف' }))) return; try { await apiPost('delete_preset', { id }); fetchPresets(); } catch (e) { notifyError(e); } };
-    const handleSave = async () => { if (!editing.preset_key || !editing.title) return notify('شناسه و عنوان الزامی است'); try { await apiPost('save_preset', editing); setEditing(null); fetchPresets(); } catch (e) { notifyError(e); } };
+    const handleSave = async () => {
+        if (!editing.preset_key || !editing.title) return notify('شناسه و عنوان الزامی است');
+        if (!editing.id && presets.some(p => p.preset_key === editing.preset_key)) return notify(`شناسه «${editing.preset_key}» قبلاً برای لیست دیگری استفاده شده است. شناسه دیگری بنویسید.`, 'error');
+        try { await apiPost('save_preset', editing); setEditing(null); setPending(null); fetchPresets(); notifySuccess('لیست ذخیره شد.'); } catch (e) { notifyError(e); }
+    };
     // ویرایش روی یک کپی عمیق انجام می‌شود تا «انصراف» تغییری در لیست باقی نگذارد
-    const startEdit = (p) => setEditing(JSON.parse(JSON.stringify({ ...p, options: p.options || [], cols: p.cols || [] })));
+    const startEdit = (p) => { setPending(null); setEditing(JSON.parse(JSON.stringify({ ...p, options: p.options || [], cols: p.cols || [] }))); };
     const setOpt = (i, patch) => setEditing(ed => ({ ...ed, options: ed.options.map((o, idx) => idx === i ? { ...o, ...patch } : o) }));
+    // تغییر نام ستون، مقدارهای همان ستون را در همه‌ی گزینه‌ها با خود می‌برد
+    const renameCol = (i, name) => setEditing(ed => {
+        const old = ed.cols[i];
+        return { ...ed, cols: ed.cols.map((x, idx) => idx === i ? name : x), options: ed.options.map(o => { const cv = { ...(o.colValues || {}) }; if (old in cv) { cv[name] = cv[old]; delete cv[old]; } return { ...o, colValues: cv }; }) };
+    });
+    const summary = (r) => [`${r.options.length} گزینه`, r.cols.length ? `${r.cols.length} ستون وابسته` : '', r.dup ? `${r.dup} تکراری کنار گذاشته شد` : '', r.empty ? `${r.empty} ردیف بدون نام رد شد` : ''].filter(Boolean).join('، ');
+
+    const importAsNew = async (file) => {
+        const r = await readPresetFile(file); if (!r) return;
+        if (!r.options.length) return notify('در فایل گزینه‌ای پیدا نشد. ستون اول باید نام گزینه‌ها باشد.', 'warning');
+        startEdit({ preset_key: keyFromFileName(file.name), title: String(file.name).replace(/\.[^.]+$/, ''), options: r.options, cols: r.cols });
+        notify(`از فایل خوانده شد: ${summary(r)}. شناسه و عنوان را بررسی و «ذخیره» را بزنید.`, 'success');
+    };
+    const importIntoEditing = async (file) => {
+        const r = await readPresetFile(file); if (!r) return;
+        if (!r.options.length) return notify('در فایل گزینه‌ای پیدا نشد. ستون اول باید نام گزینه‌ها باشد.', 'warning');
+        if (!editing.options.length) { setEditing(ed => ({ ...ed, options: r.options, cols: [...new Set([...(ed.cols || []), ...r.cols])] })); notify(`از فایل خوانده شد: ${summary(r)}.`, 'success'); return; }
+        setPending({ ...r, fileName: file.name });
+    };
+    const applyPending = (mode) => {
+        const r = pending; setPending(null);
+        setEditing(ed => {
+            const cols = [...new Set([...(mode === 'append' ? ed.cols || [] : []), ...r.cols])];
+            if (mode === 'replace') return { ...ed, options: r.options, cols };
+            const seen = new Set(ed.options.map(o => optKey(o.display)));
+            const added = r.options.filter(o => !seen.has(optKey(o.display)));
+            notify(`${added.length} گزینه‌ی جدید اضافه شد${r.options.length - added.length ? `؛ ${r.options.length - added.length} گزینه از قبل در لیست بود` : ''}.`, 'success');
+            return { ...ed, options: [...ed.options, ...added], cols };
+        });
+        if (mode === 'replace') notify(`گزینه‌های لیست با ${r.options.length} گزینه‌ی فایل جایگزین شد. برای ثبت، «ذخیره» را بزنید.`, 'success');
+    };
+    const fileButton = (label, onFile, cls) => (
+        <label className={`cursor-pointer flex items-center gap-1.5 ${cls}`}><Icon name="FileSpreadsheet" className="w-4 h-4" /> {label}<input type="file" accept=".xlsx,.csv,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" className="hidden" onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) onFile(f); }} /></label>
+    );
+    const sample = () => downloadPresetXlsx({ title: 'نمونه لیست پایه', options: [{ display: 'تهران', print: 'Tehran', colValues: { 'کد استان': '21' } }, { display: 'اصفهان', print: 'Isfahan', colValues: { 'کد استان': '31' } }, { display: 'فارس', print: 'Fars', colValues: { 'کد استان': '71' } }], cols: ['کد استان'] });
+
     return (
         <ModalShell title="مدیریت لیست‌های پایه" icon="Database" onClose={onClose} wide>
-            {editing ? (<div className="space-y-4 bg-slate-50 p-6 rounded-2xl border"><div className="grid md:grid-cols-2 gap-4"><div><label className="text-xs font-bold block mb-1">شناسه یکتا</label><input type="text" value={editing.preset_key} onChange={e => setEditing({ ...editing, preset_key: e.target.value.toUpperCase().replace(/\s/g, '_') })} className="w-full border rounded-xl px-3 py-2 bg-white" dir="ltr" /></div><div><label className="text-xs font-bold block mb-1">عنوان نمایشی</label><input type="text" value={editing.title} onChange={e => setEditing({ ...editing, title: e.target.value })} className="w-full border rounded-xl px-3 py-2 bg-white" /></div></div><div className="border-t pt-4"><div className="mb-4 bg-indigo-50 p-3 rounded-xl border border-indigo-100"><h5 className="text-[10px] font-bold text-indigo-900 mb-2">تعریف ستون‌های وابسته</h5>{(editing.cols || []).map((c, i) => (<div key={i} className="flex gap-1 mb-1 items-center"><input value={c} onChange={e => setEditing({ ...editing, cols: editing.cols.map((x, idx) => idx === i ? e.target.value : x) })} className="flex-1 text-xs border rounded px-2 py-1" /><button onClick={() => setEditing({ ...editing, cols: editing.cols.filter((_, idx) => idx !== i) })} className="text-red-500 px-1 text-xs font-bold">×</button></div>))}<button onClick={() => setEditing({ ...editing, cols: [...(editing.cols || []), `ستون ${(editing.cols || []).length + 1}`] })} className="text-[10px] bg-white text-indigo-700 py-1 px-3 border border-indigo-200 rounded font-bold hover:bg-indigo-50 mt-1">+ افزودن ستون</button></div><div className="max-h-60 overflow-y-auto space-y-2 pr-2 custom-scrollbar">{editing.options.map((opt, i) => (<div key={i} className="bg-white p-3 rounded-xl border relative"><div className="flex gap-2 items-center"><span className="text-xs text-slate-400 w-4 text-center">{i + 1}</span><input value={opt.display || ''} onChange={e => setOpt(i, { display: e.target.value })} placeholder="نمایش فرم" className="w-1/2 border rounded px-2 py-1.5 text-sm" /><input value={opt.print || ''} onChange={e => setOpt(i, { print: e.target.value })} placeholder="چاپ روی کارت" className="w-1/2 border rounded px-2 py-1.5 text-sm" /><button onClick={() => setEditing({ ...editing, options: editing.options.filter((_, idx) => idx !== i) })} className="text-red-500 p-1 hover:bg-red-50 rounded"><Icon name="X" className="w-4 h-4" /></button></div>{(editing.cols || []).length > 0 && <div className="mt-2 pl-6 border-r-2 border-indigo-100 space-y-1">{editing.cols.map((col, ci) => (<div key={ci} className="flex items-center gap-1"><span className="text-[10px] text-slate-500 w-16">{col}:</span><input value={(opt.colValues && opt.colValues[col]) || ''} onChange={e => setOpt(i, { colValues: { ...(opt.colValues || {}), [col]: e.target.value } })} className="flex-1 text-xs border rounded px-1.5 py-1 bg-slate-50" /></div>))}</div>}</div>))}</div><button onClick={() => setEditing({ ...editing, options: [...editing.options, { display: '', print: '', colValues: {} }] })} className="w-full mt-3 bg-indigo-50 text-indigo-700 font-bold py-2 rounded-xl">+ افزودن گزینه جدید</button></div><div className="flex gap-3 pt-4 border-t"><button onClick={() => setEditing(null)} className="flex-1 bg-slate-200 py-3 rounded-xl font-bold">انصراف</button><button onClick={handleSave} className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold">ذخیره</button></div></div>) :
-                (<div className="space-y-4"><button onClick={() => startEdit({ preset_key: '', title: '', options: [], cols: [] })} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold">+ ساخت لیست جدید</button><table className="w-full text-right bg-white rounded-2xl border"><thead className="bg-slate-50 border-b"><tr><th className="p-4">عنوان</th><th className="p-4" dir="ltr">Key</th><th className="p-4 text-center">گزینه‌ها</th><th className="p-4 text-center">عملیات</th></tr></thead><tbody className="divide-y">{loading ? <tr><td colSpan="4" className="text-center p-8">بارگذاری...</td></tr> : presets.map(p => (<tr key={p.id} className="hover:bg-slate-50"><td className="p-4 font-bold">{p.title}</td><td className="p-4 font-mono text-sm text-slate-500" dir="ltr">{p.preset_key}</td><td className="p-4 text-center">{(p.options && p.options.length) || 0}</td><td className="p-4 flex justify-center gap-2"><button onClick={() => startEdit(p)} className="bg-slate-100 p-2 rounded text-indigo-600"><Icon name="Edit2" className="w-4 h-4" /></button><button onClick={() => handleDelete(p.id)} className="bg-slate-100 p-2 rounded text-red-600"><Icon name="Trash2" className="w-4 h-4" /></button></td></tr>))}</tbody></table></div>)}
+            {editing ? (
+                <div className="space-y-4 bg-slate-50 p-6 rounded-2xl border">
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <div><label className="text-xs font-bold block mb-1">شناسه یکتا</label><input type="text" value={editing.preset_key} onChange={e => setEditing({ ...editing, preset_key: e.target.value.toUpperCase().replace(/\s/g, '_') })} className="w-full border rounded-xl px-3 py-2 bg-white" dir="ltr" /></div>
+                        <div><label className="text-xs font-bold block mb-1">عنوان نمایشی</label><input type="text" value={editing.title} onChange={e => setEditing({ ...editing, title: e.target.value })} className="w-full border rounded-xl px-3 py-2 bg-white" /></div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 items-center bg-white border rounded-xl p-3">
+                        <span className="text-xs text-slate-500 ml-auto">{editing.options.length} گزینه</span>
+                        {fileButton('ورود از اکسل', importIntoEditing, 'text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 px-3 py-1.5 rounded-lg font-bold')}
+                        <button type="button" onClick={() => downloadPresetXlsx(editing)} disabled={!editing.options.length} className="text-xs bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 disabled:opacity-40"><Icon name="Download" className="w-4 h-4" /> خروجی اکسل</button>
+                    </div>
+                    {pending && (
+                        <div role="alert" className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
+                            <p className="text-sm text-emerald-900"><b>{pending.fileName}</b>: {summary(pending)}. این لیست الان {editing.options.length} گزینه دارد. با گزینه‌های فایل چه کنم؟</p>
+                            <div className="flex flex-wrap gap-2">
+                                <button type="button" onClick={() => applyPending('append')} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold">افزودن گزینه‌های جدید به لیست</button>
+                                <button type="button" onClick={() => applyPending('replace')} className="bg-white border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm font-bold">جایگزینی کامل لیست</button>
+                                <button type="button" onClick={() => setPending(null)} className="text-slate-600 px-3 py-2 text-sm">انصراف</button>
+                            </div>
+                            <p className="text-[11px] text-emerald-800">در «افزودن»، گزینه‌هایی که نامشان در لیست هست تکرار نمی‌شوند. تا «ذخیره» را نزنید چیزی ثبت نمی‌شود.</p>
+                        </div>
+                    )}
+                    <div className="border-t pt-4">
+                        <div className="mb-4 bg-indigo-50 p-3 rounded-xl border border-indigo-100">
+                            <h5 className="text-[10px] font-bold text-indigo-900 mb-2">تعریف ستون‌های وابسته</h5>
+                            {(editing.cols || []).map((c, i) => (<div key={i} className="flex gap-1 mb-1 items-center"><input value={c} onChange={e => renameCol(i, e.target.value)} className="flex-1 text-xs border rounded px-2 py-1" aria-label={`نام ستون ${i + 1}`} /><button onClick={() => setEditing({ ...editing, cols: editing.cols.filter((_, idx) => idx !== i) })} className="text-red-500 px-1 text-xs font-bold" aria-label={`حذف ستون ${c}`}>×</button></div>))}
+                            <button onClick={() => setEditing({ ...editing, cols: [...(editing.cols || []), `ستون ${(editing.cols || []).length + 1}`] })} className="text-[10px] bg-white text-indigo-700 py-1 px-3 border border-indigo-200 rounded font-bold hover:bg-indigo-50 mt-1">+ افزودن ستون</button>
+                        </div>
+                        <div className="max-h-72 overflow-y-auto space-y-2 pr-2 custom-scrollbar">{editing.options.map((opt, i) => (
+                            <div key={i} className="bg-white p-3 rounded-xl border relative">
+                                <div className="flex gap-2 items-center"><span className="text-xs text-slate-400 w-6 text-center shrink-0">{i + 1}</span><input value={opt.display || ''} onChange={e => setOpt(i, { display: e.target.value })} placeholder="نمایش فرم" className="w-1/2 border rounded px-2 py-1.5 text-sm" /><input value={opt.print || ''} onChange={e => setOpt(i, { print: e.target.value })} placeholder="چاپ روی کارت" className="w-1/2 border rounded px-2 py-1.5 text-sm" /><button onClick={() => setEditing({ ...editing, options: editing.options.filter((_, idx) => idx !== i) })} className="text-red-500 p-1 hover:bg-red-50 rounded" aria-label={`حذف ${opt.display || 'گزینه'}`}><Icon name="X" className="w-4 h-4" /></button></div>
+                                {(editing.cols || []).length > 0 && <div className="mt-2 pl-6 border-r-2 border-indigo-100 space-y-1">{editing.cols.map((col, ci) => (<div key={ci} className="flex items-center gap-1"><span className="text-[10px] text-slate-500 w-16 truncate">{col}:</span><input value={(opt.colValues && opt.colValues[col]) || ''} onChange={e => setOpt(i, { colValues: { ...(opt.colValues || {}), [col]: e.target.value } })} className="flex-1 text-xs border rounded px-1.5 py-1 bg-slate-50" /></div>))}</div>}
+                            </div>
+                        ))}</div>
+                        <button onClick={() => setEditing({ ...editing, options: [...editing.options, { display: '', print: '', colValues: {} }] })} className="w-full mt-3 bg-indigo-50 text-indigo-700 font-bold py-2 rounded-xl">+ افزودن گزینه جدید</button>
+                    </div>
+                    <div className="flex gap-3 pt-4 border-t"><button onClick={() => { setEditing(null); setPending(null); }} className="flex-1 bg-slate-200 py-3 rounded-xl font-bold">انصراف</button><button onClick={handleSave} className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold">ذخیره</button></div>
+                </div>
+            ) : (
+                <div className="space-y-4">
+                    <div className="flex flex-wrap gap-2 items-center">
+                        <button onClick={() => startEdit({ preset_key: '', title: '', options: [], cols: [] })} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold">+ ساخت لیست جدید</button>
+                        {fileButton('ساخت لیست از فایل اکسل', importAsNew, 'bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-emerald-700')}
+                        <button type="button" onClick={sample} className="text-xs text-slate-600 underline mr-auto">دانلود فایل نمونه</button>
+                    </div>
+                    <p className="text-xs text-slate-500">ستون اول فایل: نام گزینه در فرم (مثلاً نام استان)؛ ستون دوم (اختیاری): متن چاپ روی کارت؛ ستون‌های بعدی: ستون‌های وابسته. ردیف اول اگر عنوان ستون‌ها باشد خودکار تشخیص داده می‌شود. فرمت xlsx یا CSV.</p>
+                    <table className="w-full text-right bg-white rounded-2xl border"><thead className="bg-slate-50 border-b"><tr><th className="p-4">عنوان</th><th className="p-4" dir="ltr">Key</th><th className="p-4 text-center">گزینه‌ها</th><th className="p-4 text-center">عملیات</th></tr></thead>
+                        <tbody className="divide-y">{loading ? <tr><td colSpan="4" className="text-center p-8">بارگذاری...</td></tr> : presets.length === 0 ? <tr><td colSpan="4" className="text-center p-8 text-slate-400">هنوز لیستی ساخته نشده است.</td></tr> : presets.map(p => (
+                            <tr key={p.id} className="hover:bg-slate-50"><td className="p-4 font-bold">{p.title}</td><td className="p-4 font-mono text-sm text-slate-500" dir="ltr">{p.preset_key}</td><td className="p-4 text-center">{(p.options && p.options.length) || 0}</td>
+                                <td className="p-4 flex justify-center gap-2"><button onClick={() => startEdit(p)} className="bg-slate-100 p-2 rounded text-indigo-600" aria-label={`ویرایش ${p.title}`} title="ویرایش"><Icon name="Edit2" className="w-4 h-4" /></button><button onClick={() => downloadPresetXlsx(p)} className="bg-slate-100 p-2 rounded text-emerald-700" aria-label={`خروجی اکسل ${p.title}`} title="خروجی اکسل"><Icon name="FileDown" className="w-4 h-4" /></button><button onClick={() => handleDelete(p.id)} className="bg-slate-100 p-2 rounded text-red-600" aria-label={`حذف ${p.title}`} title="حذف"><Icon name="Trash2" className="w-4 h-4" /></button></td></tr>
+                        ))}</tbody>
+                    </table>
+                </div>
+            )}
         </ModalShell>
-    )
+    );
 }
 
 function FontsManagerModal({ onClose, fetchGlobalFonts }) {
@@ -1856,6 +1996,39 @@ function SlugEditor({ data, setData, originalSlug }) {
 }
 
 /** تنظیمات بهره‌برداری سازمان: اعتبار کارت‌ها، وضعیت سامانه، زبان کاربران. */
+/** ترتیب نمایش فیلدها در فرم کاربر، با دکمه‌های بالا و پایین (ترتیب لایه‌ها روی کارت تغییر نمی‌کند). */
+function FormOrderEditor({ data, setData }) {
+    const fields = getVisibleFields(data.fields, data); const single = isSingleSided(data);
+    const move = (i, dir) => {
+        const ids = fields.map(f => f.id); const j = i + dir; if (j < 0 || j >= ids.length) return;
+        [ids[i], ids[j]] = [ids[j], ids[i]];
+        setData(p => ({ ...p, formOrder: ids }), { checkpoint: true });
+    };
+    const custom = Array.isArray(data.formOrder) && data.formOrder.length > 0;
+    const btn = 'p-1.5 rounded-lg border bg-white hover:bg-indigo-50 hover:border-indigo-300 text-slate-600 disabled:opacity-30 disabled:pointer-events-none';
+    return (
+        <div className="bg-white rounded-2xl shadow-sm border overflow-hidden mb-6">
+            <div className="p-5 border-b flex flex-wrap justify-between items-start gap-3">
+                <div><h3 className="font-bold text-lg text-slate-800">ترتیب فیلدها در فرم</h3><p className="text-sm text-slate-500">ترتیبی که کاربر فیلدها را در فرم صدور کارت می‌بیند. جای المان‌ها روی کارت عوض نمی‌شود.</p></div>
+                {custom && <button type="button" onClick={() => setData(p => ({ ...p, formOrder: [] }), { checkpoint: true })} className="text-xs text-indigo-700 hover:bg-indigo-50 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1"><Icon name="RotateCcw" className="w-3.5 h-3.5" /> بازگشت به ترتیب طراحی</button>}
+            </div>
+            {fields.length === 0 ? <p className="text-center p-6 text-slate-400 text-sm">هنوز فیلدی برای فرم تعریف نشده است.</p> : (
+                <ol className="divide-y" aria-label="ترتیب فیلدها در فرم">{fields.map((f, i) => (
+                    <li key={f.id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-slate-50">
+                        <span className="w-7 h-7 shrink-0 rounded-full bg-slate-100 text-slate-500 text-xs font-bold flex items-center justify-center">{i + 1}</span>
+                        <span className="flex-1 min-w-0 truncate font-bold text-slate-700">{f.label || '—'}</span>
+                        <span className="text-[11px] text-slate-500 bg-slate-100 rounded-full px-2 py-0.5 shrink-0">{FIELD_TYPE_LABELS[f.type] || f.type}{!single && ` · ${f.side === 'back' ? 'پشت' : 'رو'}`}</span>
+                        <div className="flex gap-1 shrink-0">
+                            <button type="button" className={btn} disabled={i === 0} onClick={() => move(i, -1)} aria-label={`انتقال به بالا: ${f.label}`} title="بالا"><Icon name="ArrowUp" className="w-4 h-4" /></button>
+                            <button type="button" className={btn} disabled={i === fields.length - 1} onClick={() => move(i, 1)} aria-label={`انتقال به پایین: ${f.label}`} title="پایین"><Icon name="ArrowDown" className="w-4 h-4" /></button>
+                        </div>
+                    </li>
+                ))}</ol>
+            )}
+        </div>
+    );
+}
+
 function TenantSettingsEditor({ data, setData }) {
     const active = data.isActive !== false;
     return (
@@ -2065,7 +2238,7 @@ function SuperAdminWizard({ initialData, globalFonts, globalValidations, t, onCo
                     {step === 2 && <div className="h-full relative overflow-hidden"><LiquidBackground colors={themeOf(data)} fixed={false} /><div className="relative h-full flex items-center justify-center p-8 transform scale-90 origin-top"><TenantLoginPreview data={data} t={t} /></div></div>}
                     {step === 3 && sideEditor('front', 'frontBg')}
                     {step === 4 && !single && sideEditor('back', 'backBg')}
-                    {step === 5 && (<div className="h-full p-6 lg:p-12 overflow-y-auto flex flex-col items-center"><div className="max-w-4xl w-full"><div className="bg-white p-6 rounded-2xl shadow-sm border mb-6 flex justify-between items-center"><div><h3 className="font-bold text-lg text-slate-800">تخصیص فونت به فیلدها</h3><p className="text-sm text-slate-500">از فونت‌های پیش‌فرض یا آپلودی استفاده کنید.</p></div></div><div className="bg-white rounded-2xl shadow-sm border overflow-hidden"><table className="w-full text-right text-sm"><thead className="bg-slate-50 border-b"><tr><th className="p-4">المان چاپی</th><th className="p-4">انتخاب فونت</th><th className="p-4">پیش‌نمایش</th><th className="p-4">حداکثر سایز (Max px)</th></tr></thead><tbody className="divide-y">{activeFields.filter(f => f.printOnCard && (f.type === 'text' || f.type === 'select' || f.type === 'date')).map(f => (<tr key={f.id} className="hover:bg-slate-50"><td className="p-4 font-bold text-slate-700">{f.label}</td><td className="p-4"><select className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-full max-w-[200px]" value={f.fontFamily || 'Vazirmatn'} onChange={e => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, fontFamily: e.target.value } : df) }))}><optgroup label="پیش‌فرض">{DEFAULT_FONTS.map(font => <option key={font} value={font}>{font}</option>)}</optgroup><optgroup label="کتابخانه مرکزی">{globalFonts.map(font => <option key={font.font_key} value={font.font_name}>{font.font_name}</option>)}</optgroup></select></td><td className="p-4"><span className="font-preview text-xl text-slate-800 whitespace-nowrap" style={{ '--preview-font': `"${f.fontFamily || 'Vazirmatn'}"`, fontWeight: f.fontWeight === 'normal' ? 400 : 700 }}>{f.label || 'نمونه متن'} ۱۲۳ Abc</span></td><td className="p-4"><input type="number" min="8" className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-24 text-center" value={f.maxFontSize || 40} onChange={e => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, maxFontSize: Number(e.target.value) } : df) }))} /> px</td></tr>))}{activeFields.filter(f => f.printOnCard && (f.type === 'text' || f.type === 'select' || f.type === 'date')).length === 0 && <tr><td colSpan="4" className="text-center p-6 text-slate-400">فیلدی برای تنظیم فونت وجود ندارد.</td></tr>}</tbody></table></div></div></div>)}
+                    {step === 5 && (<div className="h-full p-6 lg:p-12 overflow-y-auto flex flex-col items-center"><div className="max-w-4xl w-full"><FormOrderEditor data={data} setData={setData} /><div className="bg-white p-6 rounded-2xl shadow-sm border mb-6 flex justify-between items-center"><div><h3 className="font-bold text-lg text-slate-800">تخصیص فونت به فیلدها</h3><p className="text-sm text-slate-500">از فونت‌های پیش‌فرض یا آپلودی استفاده کنید.</p></div></div><div className="bg-white rounded-2xl shadow-sm border overflow-hidden"><table className="w-full text-right text-sm"><thead className="bg-slate-50 border-b"><tr><th className="p-4">المان چاپی</th><th className="p-4">انتخاب فونت</th><th className="p-4">پیش‌نمایش</th><th className="p-4">حداکثر سایز (Max px)</th></tr></thead><tbody className="divide-y">{activeFields.filter(f => f.printOnCard && (f.type === 'text' || f.type === 'select' || f.type === 'date')).map(f => (<tr key={f.id} className="hover:bg-slate-50"><td className="p-4 font-bold text-slate-700">{f.label}</td><td className="p-4"><select className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-full max-w-[200px]" value={f.fontFamily || 'Vazirmatn'} onChange={e => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, fontFamily: e.target.value } : df) }))}><optgroup label="پیش‌فرض">{DEFAULT_FONTS.map(font => <option key={font} value={font}>{font}</option>)}</optgroup><optgroup label="کتابخانه مرکزی">{globalFonts.map(font => <option key={font.font_key} value={font.font_name}>{font.font_name}</option>)}</optgroup></select></td><td className="p-4"><span className="font-preview text-xl text-slate-800 whitespace-nowrap" style={{ '--preview-font': `"${f.fontFamily || 'Vazirmatn'}"`, fontWeight: f.fontWeight === 'normal' ? 400 : 700 }}>{f.label || 'نمونه متن'} ۱۲۳ Abc</span></td><td className="p-4"><input type="number" min="8" className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-24 text-center" value={f.maxFontSize || 40} onChange={e => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, maxFontSize: Number(e.target.value) } : df) }))} /> px</td></tr>))}{activeFields.filter(f => f.printOnCard && (f.type === 'text' || f.type === 'select' || f.type === 'date')).length === 0 && <tr><td colSpan="4" className="text-center p-6 text-slate-400">فیلدی برای تنظیم فونت وجود ندارد.</td></tr>}</tbody></table></div></div></div>)}
                     {step === 6 && <div className="h-full relative overflow-hidden"><LiquidBackground colors={themeOf(data)} fixed={false} /><div className="relative h-full flex items-center justify-center p-4"><TenantLoginPreview data={data} t={t} realMode /></div></div>}
                     {step === 7 && <div className="h-full p-6"><TenantFormPreview data={data} formData={previewFormData} setFormData={setPreviewFormData} t={t} globalValidations={globalValidations} /></div>}
                     {step === 8 && (<div className="h-full p-6 flex flex-col items-center justify-center overflow-y-auto"><div className="mb-6 bg-blue-50 text-blue-700 p-4 rounded-xl border border-blue-200 text-sm max-w-2xl w-full text-center shadow-sm">پیش‌نمایش بر اساس داده‌های تستی مرحله قبل ساخته شده است.</div><CardLivePreview config={data} userData={previewFormData} showActions showcase t={t} /></div>)}

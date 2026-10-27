@@ -829,6 +829,8 @@ $routes = [
         $data['allowLangSwitch'] = ($input['allowLangSwitch'] ?? true) !== false;
         // رنگ‌های گرادیانت پس‌زمینه‌ی پنل این سازمان
         $data['theme'] = sanitize_theme($input['theme'] ?? null);
+        // ترتیب فیلدها در فرم (فهرست شناسه‌ی فیلدها؛ خالی = ترتیب طراحی)
+        $data['formOrder'] = array_values(array_unique(array_filter(array_map(fn($v) => is_string($v) || is_int($v) ? (string)$v : '', array_slice(in_arr($input, 'formOrder'), 0, 500)), fn($v) => $v !== '' && strlen($v) <= 64 && valid_id($v))));
         // آدرس اختصاصی لینک (خالی = لینک با شناسه‌ی تصادفی)
         $slug = strtolower(in_str($input, 'slug', 64));
         if ($slug !== '') {
@@ -1044,8 +1046,21 @@ $routes = [
         require_super();
         $key = in_str($input, 'preset_key', 100); $title = in_str($input, 'title', 200);
         if ($key === '' || $title === '') fail('شناسه و عنوان الزامی است.');
-        $opts = json_enc(array_values(in_arr($input, 'options')));
-        $cols = json_enc(array_values(array_filter(in_arr($input, 'cols'), 'is_string')));
+        // ستون‌ها و گزینه‌ها پاک‌سازی می‌شوند (لیست ممکن است از فایل اکسل آمده باشد)
+        $colList = array_slice(array_values(array_unique(array_filter(array_map(fn($c) => is_string($c) ? mb_substr(trim($c), 0, 100) : '', in_arr($input, 'cols')), fn($c) => $c !== ''))), 0, 50);
+        $rawOpts = in_arr($input, 'options');
+        if (count($rawOpts) > 10000) fail('هر لیست حداکثر ۱۰٬۰۰۰ گزینه می‌تواند داشته باشد.');
+        $optList = [];
+        foreach ($rawOpts as $o) {
+            if (!is_array($o)) continue;
+            $display = is_scalar($o['display'] ?? null) ? mb_substr(trim((string)$o['display']), 0, 500) : '';
+            if ($display === '') continue;
+            $cv = [];
+            foreach ($colList as $c) { $v = $o['colValues'][$c] ?? null; if (is_scalar($v) && (string)$v !== '') $cv[$c] = mb_substr((string)$v, 0, 500); }
+            $optList[] = ['display' => $display, 'print' => is_scalar($o['print'] ?? null) ? mb_substr((string)$o['print'], 0, 500) : '', 'colValues' => (object)$cv];
+        }
+        $opts = json_enc($optList);
+        $cols = json_enc($colList);
         $sql = "INSERT INTO card_presets (preset_key, title, options, cols) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE title = VALUES(title), options = VALUES(options), cols = VALUES(cols)";
         try { $pdo->prepare($sql)->execute([$key, $title, $opts, $cols]); }
         catch (PDOException $e) {
