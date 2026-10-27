@@ -1394,14 +1394,90 @@ const downloadPresetXlsx = async (p) => {
     try { downloadBlob(await writeXlsx(presetToRows(p), { sheetName: p.title || p.preset_key }), `${safeFileName(p.title || p.preset_key || 'list')}.xlsx`); }
     catch (e) { notifyError(e, 'ساخت فایل اکسل انجام نشد.'); }
 };
+const MAX_PRESET_OPTIONS = 10000;
 const readPresetFile = async (file) => {
-    try { return rowsToPreset(await readSpreadsheet(file)); }
+    try {
+        const r = rowsToPreset(await readSpreadsheet(file));
+        if (r.options.length > MAX_PRESET_OPTIONS) { notify(`فایل ${r.options.length} گزینه دارد؛ هر لیست حداکثر ${MAX_PRESET_OPTIONS} گزینه می‌تواند داشته باشد.`, 'error'); return null; }
+        return r;
+    }
     catch (e) { notify(e.code === 'xls' ? 'فرمت قدیمی xls پشتیبانی نمی‌شود. فایل را در اکسل با «Save As» و فرمت xlsx یا CSV ذخیره کنید.' : 'فایل خوانده نشد. یک فایل اکسل (xlsx) یا CSV انتخاب کنید.', 'error'); return null; }
 };
+
+const GUIDE_SAMPLE = [{ display: 'تهران', print: 'Tehran', colValues: { 'مرکز استان': 'تهران' } }, { display: 'اصفهان', print: 'Isfahan', colValues: { 'مرکز استان': 'اصفهان' } }, { display: 'فارس', print: '', colValues: { 'مرکز استان': 'شیراز' } }];
+/**
+ * راهنمای ساختار فایل اکسل پیش از انتخاب فایل: نمونه‌ی جدول به شکل برگه‌ی اکسل، توضیح هر ستون، قواعد،
+ * دانلود فایل نمونه و در پایین دکمه‌ی انتخاب فایل. اگر از داخل یک لیست باز شود، ستون‌های همان لیست را نشان می‌دهد.
+ */
+function ExcelImportGuideModal({ list, onFile, onClose }) {
+    useEscape(onClose);
+    const existing = !!(list && list.options && list.options.length);
+    const cols = list && list.cols && list.cols.length ? list.cols : (list ? [] : ['مرکز استان']);
+    const sampleOpts = existing ? list.options.slice(0, 3) : GUIDE_SAMPLE;
+    const rows = presetToRows({ cols, options: sampleOpts });
+    const letters = rows[0].map((_, i) => String.fromCharCode(65 + i));
+    const colInfo = [
+        { l: 'A', title: 'نمایش در فرم', req: true, text: 'نامی که کاربر در فهرست کشویی فرم می‌بیند، مثلاً نام استان. هر ردیف یک گزینه است و این ستون نباید خالی باشد.' },
+        { l: 'B', title: 'چاپ روی کارت', req: false, text: 'اگر می‌خواهید روی کارت متن دیگری چاپ شود (مثلاً نام انگلیسی). خالی بماند، همان متن ستون A چاپ می‌شود.' },
+        ...cols.map((c, i) => ({ l: String.fromCharCode(67 + i), title: c, req: false, text: 'ستون وابسته: مقداری که با انتخاب هر گزینه، در فیلدهای متصل به این لیست پر می‌شود.' })),
+    ];
+    if (!cols.length) colInfo.push({ l: 'C…', title: 'ستون‌های وابسته', req: false, text: 'اختیاری. عنوان هر ستون اضافه در ردیف اول، نام یک ستون وابسته‌ی جدید می‌شود.' });
+    const download = () => downloadPresetXlsx({ title: list && list.title ? `${list.title} - نمونه` : 'نمونه لیست پایه', cols, options: existing ? [] : GUIDE_SAMPLE });
+    const rules = [
+        'ردیف اول، عنوان ستون‌ها باشد (دقیقاً مثل نمونه). اگر عنوان نگذارید، از ردیف اول به عنوان داده خوانده می‌شود و ستون‌های C به بعد «ستون ۱، ستون ۲ …» نام می‌گیرند.',
+        'فقط برگه‌ی (Sheet) اول فایل خوانده می‌شود. ستون یا سلول ادغام‌شده (Merge) نداشته باشد.',
+        'ردیف‌هایی که ستون A آن‌ها خالی است رد می‌شوند. نام تکراری فقط یک بار وارد می‌شود («ی/ي» و «ک/ك» یکسان حساب می‌شوند).',
+        'کدهایی که با صفر شروع می‌شوند (مثل ۰۲۱): پیش از وارد کردن، قالب آن ستون را در اکسل Text کنید؛ وگرنه اکسل صفر اول را حذف می‌کند.',
+        <>فرمت فایل: xlsx یا CSV (با کدگذاری <span className="latin-digits" dir="ltr">UTF-8</span>). فرمت قدیمی xls پذیرفته نمی‌شود. حداکثر {MAX_PRESET_OPTIONS.toLocaleString('en-US')} ردیف.</>,
+        existing ? 'بعد از انتخاب فایل می‌پرسیم گزینه‌ها به لیست فعلی «اضافه» شوند یا لیست «جایگزین» شود. تا «ذخیره» را نزنید چیزی ثبت نمی‌شود.' : 'بعد از انتخاب فایل، گزینه‌ها در فرم ویرایش نمایش داده می‌شوند تا بررسی کنید. تا «ذخیره» را نزنید چیزی ثبت نمی‌شود.',
+    ];
+    // روی body رسم می‌شود: داخل پنجره‌ی شیشه‌ای (backdrop-filter) موقعیت fixed نسبت به همان پنجره حساب می‌شد و راهنما بریده می‌شد
+    return ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-sm flex items-start sm:items-center justify-center p-4 overflow-y-auto">
+            <div role="dialog" aria-modal="true" aria-labelledby="xl-guide-title" className="glass-strong rounded-3xl p-5 sm:p-6 w-full max-w-3xl my-8 shadow-2xl">
+                <div className="flex justify-between items-start gap-3 mb-4">
+                    <div><h3 id="xl-guide-title" className="text-lg font-bold text-slate-800 flex items-center gap-2"><Icon name="FileSpreadsheet" className="w-5 h-5 text-emerald-700" /> {existing ? `ورود از اکسل به «${list.title}»` : 'ساخت لیست پایه از فایل اکسل'}</h3>
+                        <p className="text-sm text-slate-500 mt-1">فایل اکسل را با این ساختار آماده کنید. ساده‌ترین راه: فایل نمونه را دانلود کنید، ردیف‌های نمونه را پاک کنید و داده‌های خودتان را جایگزین کنید.</p></div>
+                    <button onClick={onClose} aria-label="بستن" className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full shrink-0"><Icon name="X" className="w-4 h-4" /></button>
+                </div>
+
+                <div className="rounded-xl border border-slate-300 overflow-x-auto bg-white mb-1" dir="rtl">
+                    <table className="text-sm border-collapse min-w-full" aria-label="نمونه‌ی ساختار فایل اکسل">
+                        <thead><tr><th className="w-10 bg-slate-100 border border-slate-300 text-[11px] text-slate-500 font-normal" aria-hidden="true"></th>{letters.map(l => <th key={l} className="bg-slate-100 border border-slate-300 text-[11px] text-slate-500 font-normal px-3 py-1 latin-digits">{l}</th>)}</tr></thead>
+                        <tbody>{rows.map((r, ri) => (
+                            <tr key={ri}><td className="bg-slate-100 border border-slate-300 text-[11px] text-slate-500 text-center px-2" aria-hidden="true">{ri + 1}</td>
+                                {r.map((c, ci) => <td key={ci} className={`border border-slate-200 px-3 py-1.5 whitespace-nowrap ${ri === 0 ? 'font-bold bg-indigo-50 text-indigo-900' : c ? 'text-slate-700' : 'text-slate-300'}`}>{c || (ri === 0 ? '' : 'خالی')}</td>)}</tr>
+                        ))}{!existing && <tr><td className="bg-slate-100 border border-slate-300 text-[11px] text-slate-400 text-center" aria-hidden="true">…</td><td colSpan={letters.length} className="border border-slate-200 px-3 py-1.5 text-xs text-slate-400">ردیف‌های بعدی: بقیه‌ی گزینه‌ها</td></tr>}</tbody>
+                    </table>
+                </div>
+                <p className="text-[11px] text-slate-500 mb-4">{existing ? 'سه ردیف اول لیست فعلی شما به عنوان نمونه نمایش داده شده است.' : 'ردیف ۱ (آبی) عنوان ستون‌هاست؛ از ردیف ۲ به بعد هر ردیف یک گزینه است.'}</p>
+
+                <div className="grid sm:grid-cols-2 gap-2 mb-4">{colInfo.map(ci => (
+                    <div key={ci.l} className="bg-white/70 border border-white rounded-xl p-3 flex gap-3">
+                        <span className="w-8 h-8 shrink-0 rounded-lg bg-slate-800 text-white text-sm font-bold flex items-center justify-center latin-digits">{ci.l}</span>
+                        <div className="min-w-0"><p className="text-sm font-bold text-slate-800">{ci.title} <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${ci.req ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-500'}`}>{ci.req ? 'الزامی' : 'اختیاری'}</span></p><p className="text-xs text-slate-600 mt-0.5">{ci.text}</p></div>
+                    </div>
+                ))}</div>
+                {existing && cols.length > 0 && <p className="text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-3 mb-4">عنوان ستون‌های وابسته در فایل باید دقیقاً همین‌ها باشد: {cols.map(c => `«${c}»`).join('، ')}. ستونی با عنوان دیگر، به‌عنوان ستون وابسته‌ی جدید اضافه می‌شود.</p>}
+
+                <ul className="space-y-1.5 mb-5">{rules.map((r, i) => <li key={i} className="flex gap-2 text-xs text-slate-700"><Icon name="CircleCheck" className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" /><span>{r}</span></li>)}</ul>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                    <label className="flex-1 cursor-pointer flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold focus-within:ring-4 focus-within:ring-emerald-200"><Icon name="Upload" className="w-5 h-5" /> انتخاب فایل اکسل و ورود
+                        <input type="file" accept=".xlsx,.csv,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" className="sr-only" onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) { onClose(); onFile(f); } }} /></label>
+                    <button type="button" onClick={download} className="flex items-center justify-center gap-2 bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-50 px-5 py-3 rounded-xl font-bold"><Icon name="Download" className="w-4 h-4" /> دانلود فایل نمونه</button>
+                    <button type="button" onClick={onClose} className="px-5 py-3 rounded-xl font-bold text-slate-600 hover:bg-white/60">انصراف</button>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+}
 
 function PresetsManagerModal({ onClose }) {
     const [presets, setPresets] = useState([]); const [loading, setLoading] = useState(true); const [editing, setEditing] = useState(null);
     const [pending, setPending] = useState(null); // ورود اکسل به لیستی که گزینه دارد: منتظر انتخاب «افزودن» یا «جایگزینی»
+    const [guide, setGuide] = useState(null); // 'new' | 'edit': راهنمای ساختار فایل پیش از انتخاب فایل
     const fetchPresets = () => { setLoading(true); apiGet('get_presets').then(d => setPresets(Array.isArray(d) ? d : [])).catch(e => notifyError(e)).finally(() => setLoading(false)); };
     useEffect(() => { fetchPresets(); }, []);
     const handleDelete = async (id) => { if (!(await askConfirm('این مورد حذف شود؟', { danger: true, okText: 'حذف' }))) return; try { await apiPost('delete_preset', { id }); fetchPresets(); } catch (e) { notifyError(e); } };
@@ -1444,13 +1520,13 @@ function PresetsManagerModal({ onClose }) {
         });
         if (mode === 'replace') notify(`گزینه‌های لیست با ${r.options.length} گزینه‌ی فایل جایگزین شد. برای ثبت، «ذخیره» را بزنید.`, 'success');
     };
-    const fileButton = (label, onFile, cls) => (
-        <label className={`cursor-pointer flex items-center gap-1.5 ${cls}`}><Icon name="FileSpreadsheet" className="w-4 h-4" /> {label}<input type="file" accept=".xlsx,.csv,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" className="hidden" onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) onFile(f); }} /></label>
+    const guideButton = (label, mode, cls) => (
+        <button type="button" onClick={() => setGuide(mode)} className={`flex items-center gap-1.5 ${cls}`}><Icon name="FileSpreadsheet" className="w-4 h-4" /> {label}</button>
     );
-    const sample = () => downloadPresetXlsx({ title: 'نمونه لیست پایه', options: [{ display: 'تهران', print: 'Tehran', colValues: { 'کد استان': '21' } }, { display: 'اصفهان', print: 'Isfahan', colValues: { 'کد استان': '31' } }, { display: 'فارس', print: 'Fars', colValues: { 'کد استان': '71' } }], cols: ['کد استان'] });
 
     return (
-        <ModalShell title="مدیریت لیست‌های پایه" icon="Database" onClose={onClose} wide>
+        <ModalShell title="مدیریت لیست‌های پایه" icon="Database" onClose={guide ? () => { } : onClose} wide>
+            {guide && <ExcelImportGuideModal list={guide === 'edit' ? editing : null} onFile={guide === 'edit' ? importIntoEditing : importAsNew} onClose={() => setGuide(null)} />}
             {editing ? (
                 <div className="space-y-4 bg-slate-50 p-6 rounded-2xl border">
                     <div className="grid md:grid-cols-2 gap-4">
@@ -1459,7 +1535,7 @@ function PresetsManagerModal({ onClose }) {
                     </div>
                     <div className="flex flex-wrap gap-2 items-center bg-white border rounded-xl p-3">
                         <span className="text-xs text-slate-500 ml-auto">{editing.options.length} گزینه</span>
-                        {fileButton('ورود از اکسل', importIntoEditing, 'text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 px-3 py-1.5 rounded-lg font-bold')}
+                        {guideButton('ورود از اکسل', 'edit', 'text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 px-3 py-1.5 rounded-lg font-bold')}
                         <button type="button" onClick={() => downloadPresetXlsx(editing)} disabled={!editing.options.length} className="text-xs bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 disabled:opacity-40"><Icon name="Download" className="w-4 h-4" /> خروجی اکسل</button>
                     </div>
                     {pending && (
@@ -1493,10 +1569,8 @@ function PresetsManagerModal({ onClose }) {
                 <div className="space-y-4">
                     <div className="flex flex-wrap gap-2 items-center">
                         <button onClick={() => startEdit({ preset_key: '', title: '', options: [], cols: [] })} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold">+ ساخت لیست جدید</button>
-                        {fileButton('ساخت لیست از فایل اکسل', importAsNew, 'bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-emerald-700')}
-                        <button type="button" onClick={sample} className="text-xs text-slate-600 underline mr-auto">دانلود فایل نمونه</button>
+                        {guideButton('ساخت لیست از فایل اکسل', 'new', 'bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-emerald-700')}
                     </div>
-                    <p className="text-xs text-slate-500">ستون اول فایل: نام گزینه در فرم (مثلاً نام استان)؛ ستون دوم (اختیاری): متن چاپ روی کارت؛ ستون‌های بعدی: ستون‌های وابسته. ردیف اول اگر عنوان ستون‌ها باشد خودکار تشخیص داده می‌شود. فرمت xlsx یا CSV.</p>
                     <table className="w-full text-right bg-white rounded-2xl border"><thead className="bg-slate-50 border-b"><tr><th className="p-4">عنوان</th><th className="p-4" dir="ltr">Key</th><th className="p-4 text-center">گزینه‌ها</th><th className="p-4 text-center">عملیات</th></tr></thead>
                         <tbody className="divide-y">{loading ? <tr><td colSpan="4" className="text-center p-8">بارگذاری...</td></tr> : presets.length === 0 ? <tr><td colSpan="4" className="text-center p-8 text-slate-400">هنوز لیستی ساخته نشده است.</td></tr> : presets.map(p => (
                             <tr key={p.id} className="hover:bg-slate-50"><td className="p-4 font-bold">{p.title}</td><td className="p-4 font-mono text-sm text-slate-500" dir="ltr">{p.preset_key}</td><td className="p-4 text-center">{(p.options && p.options.length) || 0}</td>

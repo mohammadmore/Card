@@ -19,13 +19,16 @@ export const askPrompt = (message, defaultValue = '', { okText = 'تایید', c
     new Promise(resolve => emit({ kind: 'dialog', id: ++seq, type: 'prompt', message, defaultValue: String(defaultValue ?? ''), okText, cancelText, title, inputType, dir, resolve }));
 
 /** بستن مودال با کلید Escape. */
+// Escape فقط بالاترین پنجره‌ی باز را می‌بندد (پنجره‌ای که دیرتر باز شده)، نه همه‌ی پنجره‌های تودرتو را
+let escStack = [];
+const onEscKey = (e) => { if (e.key !== 'Escape' || !escStack.length) return; const top = escStack[escStack.length - 1]; top.current && top.current(); };
 export const useEscape = (onClose, active = true) => {
     const ref = useRef(onClose); ref.current = onClose;
     useEffect(() => {
         if (!active) return;
-        const h = (e) => { if (e.key === 'Escape') ref.current && ref.current(); };
-        document.addEventListener('keydown', h);
-        return () => document.removeEventListener('keydown', h);
+        if (!escStack.length) document.addEventListener('keydown', onEscKey);
+        escStack.push(ref);
+        return () => { escStack = escStack.filter(x => x !== ref); if (!escStack.length) document.removeEventListener('keydown', onEscKey); };
     }, [active]);
 };
 
