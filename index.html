@@ -9,12 +9,12 @@
     <!-- assets/app.css و assets/app.js با «npm run build» از پوشه src ساخته می‌شوند -->
     <!-- حالت تیره پیش از نمایش صفحه اعمال می‌شود تا صفحه‌ی سفید چشمک نزند (منطق کامل در src/app.jsx) -->
     <script>try{var m=localStorage.getItem('ui_theme');if(m==='dark'||((!m||m==='system')&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark')}catch(e){}</script>
-    <link rel="stylesheet" href="./assets/app.css">
-    <script src="./assets/react.production.min.js"></script>
-    <script src="./assets/react-dom.production.min.js"></script>
-    <script src="./assets/lucide.min.js"></script>
-    <script src="./assets/JsBarcode.all.min.js"></script>
-    <script src="./assets/qrious.min.js"></script>
+    <link rel="stylesheet" href="./assets/app.css?v=9c53d78028">
+    <script defer src="./assets/react.production.min.js?v=d949f1c368"></script>
+    <script defer src="./assets/react-dom.production.min.js?v=35f4f974f4"></script>
+    <script defer src="./assets/icons.js?v=b13efb01e3"></script>
+    <script defer src="./assets/JsBarcode.all.min.js?v=e307d9489a"></script>
+    <script defer src="./assets/qrious.min.js?v=db99dcaf40"></script>
 </head>
 <body class="text-slate-800 antialiased min-h-screen">
     <div id="root">
@@ -23,6 +23,6 @@
             <div class="loading-text">در حال راه‌اندازی پلتفرم...</div>
         </div>
     </div>
-    <script src="./assets/app.js"></script>
+    <script defer src="./assets/app.js?v=c7d70da69c"></script>
 </body>
 </html>

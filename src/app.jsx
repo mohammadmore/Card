@@ -108,7 +108,14 @@ const loadFontFace = (name, url) => {
     }
     return fontLoadCache[name];
 };
-const injectGlobalFonts = (fonts) => (fonts || []).forEach(f => loadFontFace(f.font_name, f.font_url));
+// فونت‌های کتابخانه فقط معرفی می‌شوند و تا وقتی متنی با آن‌ها نمایش داده نشود دانلود نمی‌شوند
+// (پیش‌تر همه‌ی فایل‌های فونت هنگام باز شدن صفحه دانلود می‌شد). رسم کارت با ensureFonts فونت لازم را کامل بارگذاری می‌کند.
+const registeredFonts = new Set();
+const registerFontFace = (name, url) => {
+    if (!name || !url || registeredFonts.has(name) || fontLoadCache[name]) return;
+    try { document.fonts.add(new FontFace(name, cssUrl(url))); registeredFonts.add(name); } catch (e) { }
+};
+const injectGlobalFonts = (fonts) => (fonts || []).forEach(f => registerFontFace(f.font_name, f.font_url));
 const collectFontFamilies = (config) => [...new Set((config.fields || []).filter(f => f.printOnCard && ['text', 'select', 'date', 'photo'].includes(f.type)).map(f => f.fontFamily || 'Vazirmatn'))];
 /** مطمئن می‌شود همه‌ی فونت‌های مورد نیاز کارت واقعاً لود شده‌اند (با چند بار تلاش). خروجی: موفق بودن همه. */
 const ensureFonts = async (families, legacyCustomFonts = [], retries = 3) => {
@@ -2757,26 +2764,29 @@ function CardPlatform() {
     const showError = (e) => { setErrorMsg(e && e.status === 403 ? e.message : (e && e.status === 404 ? 'سازمان یافت نشد.' : 'ارتباط با سرور برقرار نشد.')); setAppState('ERROR'); };
 
     useEffect(() => {
-        apiGet('get_dictionaries').then(d => { if (Array.isArray(d)) setDicts(d); }).catch(() => { });
-        fetchGlobalFonts(); fetchGlobalValidations();
-        const params = new URLSearchParams(window.location.search); const orgKey = urlOrgKey();
-        if (params.get('verify')) { setAppState('VERIFY'); return; }
+        // همه‌ی داده‌های شروع (سشن، تنظیمات پلتفرم، سازمان، دیکشنری‌ها، فونت‌ها، اعتبارسنجی‌ها) با یک درخواست
+        const params = new URLSearchParams(window.location.search); const orgKey = urlOrgKey(); const verify = params.get('verify');
         (async () => {
             try {
-                const session = await apiGet('get_session'); setPlatform(session.platform);
+                const boot = await apiGet('bootstrap', !verify && orgKey ? { org: orgKey } : {});
+                if (Array.isArray(boot.dictionaries)) setDicts(boot.dictionaries);
+                if (Array.isArray(boot.fonts)) { globalFontRegistry = boot.fonts; setGlobalFonts(boot.fonts); injectGlobalFonts(boot.fonts); }
+                if (Array.isArray(boot.validations)) setGlobalValidations(boot.validations);
+                setPlatform(boot.platform);
+                if (verify) { setAppState('VERIFY'); return; }
                 if (orgKey) {
                     // آدرس می‌تواند شناسه یا آدرس اختصاصی باشد؛ از اینجا به بعد شناسه‌ی واقعی استفاده می‌شود
-                    const pub = await apiGet('get_tenant_public', { id: orgKey }); const orgId = pub.id;
+                    const pub = boot.tenantPublic; const orgId = pub.id;
                     try { const saved = localStorage.getItem(`ui_lang_${orgId}`); if (saved) setUserLang(saved); } catch (e) { }
                     setPublicTenant(pub); setSystemMode('TENANT_PORTAL');
-                    const role = session.tenants && session.tenants[orgId];
-                    if (role) { setCurrentTenant(await apiGet('get_tenant', { id: orgId })); setAppState(role === 'ADMIN' ? 'TENANT_DASHBOARD' : 'TENANT_FORM'); }
+                    const role = boot.tenants && boot.tenants[orgId];
+                    if (role && boot.tenant) { setCurrentTenant(boot.tenant); setAppState(role === 'ADMIN' ? 'TENANT_DASHBOARD' : 'TENANT_FORM'); }
                     else setAppState('LANDING');
                 } else {
                     setSystemMode('SUPER_ADMIN_PORTAL');
-                    if (session.super) { await refreshTenants(); setAppState('SUPER_ADMIN'); } else setAppState('LANDING');
+                    if (boot.super) { setTenants(Array.isArray(boot.tenantList) ? boot.tenantList : []); setAppState('SUPER_ADMIN'); } else setAppState('LANDING');
                 }
-            } catch (e) { showError(e); }
+            } catch (e) { if (verify) setAppState('VERIFY'); else showError(e); }
         })();
         const onExpired = () => { notify(FALLBACK_FA.session_expired, 'warning'); setCurrentTenant(null); setAppState('LANDING'); };
         window.addEventListener('session-expired', onExpired);

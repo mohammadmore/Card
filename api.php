@@ -21,6 +21,7 @@ function load_config(): array {
 
 function respond(array $data, int $code = 200): void {
     http_response_code($code);
+    if (!headers_sent()) header('Cache-Control: no-store'); // پاسخ‌های API (وضعیت ورود، داده‌ها) هرگز کش نشوند
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
@@ -118,12 +119,16 @@ try {
     fail('خطا در اتصال به دیتابیس', 500);
 }
 
+const AUX_SCHEMA_VERSION = '1';
 function ensure_aux_schema(PDO $pdo): void {
     static $done = false; if ($done) return; $done = true;
+    // جدول‌های کمکی یک بار ساخته می‌شوند و نسخه‌ی آن در تنظیمات ثبت می‌شود؛ بعد از آن دیگر هر بار CREATE اجرا نمی‌شود
+    if (get_setting($pdo, 'schema_aux') === AUX_SCHEMA_VERSION) return;
     $pdo->exec("CREATE TABLE IF NOT EXISTS login_attempts (k CHAR(40) PRIMARY KEY, attempts INT NOT NULL DEFAULT 0, locked_until DATETIME NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $pdo->exec("CREATE TABLE IF NOT EXISTS card_counters (tenant_id VARCHAR(64) NOT NULL, field_id VARCHAR(64) NOT NULL, next_val BIGINT NOT NULL, PRIMARY KEY (tenant_id, field_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $pdo->exec("CREATE TABLE IF NOT EXISTS audit_log (id BIGINT AUTO_INCREMENT PRIMARY KEY, tenant_id VARCHAR(64) NOT NULL DEFAULT '', actor VARCHAR(20) NOT NULL, action VARCHAR(40) NOT NULL, target VARCHAR(64) NOT NULL DEFAULT '', details TEXT NULL, ip VARCHAR(64) NOT NULL DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, KEY idx_audit_tenant (tenant_id, created_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $pdo->exec("CREATE TABLE IF NOT EXISTS webhook_logs (id BIGINT AUTO_INCREMENT PRIMARY KEY, tenant_id VARCHAR(64) NOT NULL DEFAULT '', card_id VARCHAR(64) NOT NULL DEFAULT '', url TEXT NOT NULL, http_code INT NOT NULL DEFAULT 0, error VARCHAR(500) NOT NULL DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, KEY idx_wh_tenant (tenant_id, created_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    set_setting($pdo, 'schema_aux', AUX_SCHEMA_VERSION);
 }
 
 // ==========================================
@@ -168,18 +173,26 @@ function session_info(): array {
 }
 
 // --- تنظیمات کلی پلتفرم (مثل لوگوی پنل سوپرادمین و لوگوی پیش‌فرض سازمان‌ها) ---
-function ensure_settings_table(PDO $pdo): void {
-    static $done = false; if ($done) return; $done = true;
+// همه‌ی تنظیمات با یک کوئری خوانده و برای بقیه‌ی درخواست نگه داشته می‌شوند. جدول فقط اگر وجود نداشته باشد ساخته می‌شود
+// (پیش‌تر در هر درخواست CREATE TABLE اجرا می‌شد که روی هاست اشتراکی بی‌دلیل وقت می‌گیرد).
+function create_settings_table(PDO $pdo): void {
     $pdo->exec("CREATE TABLE IF NOT EXISTS platform_settings (k VARCHAR(64) PRIMARY KEY, v TEXT NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
-function get_setting(PDO $pdo, string $key): string {
-    ensure_settings_table($pdo);
-    $stmt = $pdo->prepare("SELECT v FROM platform_settings WHERE k = ?"); $stmt->execute([$key]);
-    $v = $stmt->fetchColumn(); return $v === false ? '' : (string)$v;
+function &settings_cache(): ?array { static $cache = null; return $cache; }
+function all_settings(PDO $pdo): array {
+    $cache = &settings_cache();
+    if ($cache === null) {
+        try { $cache = $pdo->query("SELECT k, v FROM platform_settings")->fetchAll(PDO::FETCH_KEY_PAIR); }
+        catch (PDOException $e) { if ($e->getCode() !== '42S02') throw $e; create_settings_table($pdo); $cache = []; }
+    }
+    return $cache;
 }
+function get_setting(PDO $pdo, string $key): string { return (string)(all_settings($pdo)[$key] ?? ''); }
 function set_setting(PDO $pdo, string $key, string $value): void {
-    ensure_settings_table($pdo);
-    $pdo->prepare("INSERT INTO platform_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)")->execute([$key, $value]);
+    $sql = "INSERT INTO platform_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)";
+    try { $pdo->prepare($sql)->execute([$key, $value]); }
+    catch (PDOException $e) { if ($e->getCode() !== '42S02') throw $e; create_settings_table($pdo); $pdo->prepare($sql)->execute([$key, $value]); }
+    all_settings($pdo); $cache = &settings_cache(); $cache[$key] = $value;
 }
 /** تنظیمات پیش‌فرض پلتفرم (هر مقداری که سوپرادمین ذخیره نکرده باشد از اینجا می‌آید). */
 function platform_defaults(): array {
@@ -640,6 +653,29 @@ function valid_asset_url(string $url): bool {
     return $p && in_array(strtolower($p['scheme'] ?? ''), ['http', 'https'], true) && !empty($p['host']);
 }
 
+function load_fonts(PDO $pdo): array { return $pdo->query("SELECT id, font_key, font_name, font_url FROM global_fonts ORDER BY font_name ASC")->fetchAll(); }
+function list_validations(PDO $pdo): array { return $pdo->query("SELECT id, title, pattern, error_msg FROM card_validations ORDER BY id DESC")->fetchAll(); }
+/** فهرست سازمان‌ها برای پنل سوپرادمین، با تعداد کارت و آخرین صدور (دو کوئری برای همه). */
+function list_tenants_with_stats(PDO $pdo): array {
+    $stats = [];
+    foreach ($pdo->query("SELECT tenant_id, COUNT(*) AS c, MAX(issued_at) AS last FROM cards GROUP BY tenant_id") as $r) $stats[$r['tenant_id']] = $r;
+    $out = [];
+    foreach ($pdo->query("SELECT data, created_at FROM tenants ORDER BY created_at DESC") as $row) {
+        $t = json_decode($row['data'], true);
+        if (!is_array($t)) continue;
+        $v = tenant_client_view($t, true);
+        $st = $stats[$t['id'] ?? ''] ?? null;
+        $v['stats'] = ['cardCount' => $st ? (int)$st['c'] : 0, 'lastIssuedAt' => $st ? $st['last'] : null, 'createdAt' => $row['created_at']];
+        $out[] = $v;
+    }
+    return $out;
+}
+function load_dictionaries(PDO $pdo): array {
+    $out = [];
+    foreach ($pdo->query("SELECT id, lang_code, lang_name, translations FROM dictionaries ORDER BY id ASC") as $row) { $row['translations'] = json_decode((string)$row['translations'], true); $out[] = $row; }
+    return $out;
+}
+
 // ==========================================
 // 8.5. خروج خودکار پس از بی‌کاری
 // ==========================================
@@ -647,8 +683,12 @@ if (!empty($_SESSION['super']) || !empty($_SESSION['tenants'])) {
     $idle = (int)platform_settings($pdo)['idleMinutes'];
     $last = (int)($_SESSION['last_activity'] ?? time());
     if ($idle > 0 && time() - $last > $idle * 60) { $_SESSION = []; session_regenerate_id(true); }
+    // زمان آخرین فعالیت حداکثر هر ۳۰ ثانیه یک بار نوشته می‌شود تا هر درخواست فایل سشن را بازنویسی نکند
+    elseif (time() - (int)($_SESSION['last_activity'] ?? 0) >= 30) $_SESSION['last_activity'] = time();
 }
-$_SESSION['last_activity'] = time();
+// PHP برای هر کاربر فقط به یک درخواست در آن واحد اجازه‌ی دسترسی به سشن می‌دهد و بقیه را در صف نگه می‌دارد.
+// درخواست‌های GET چیزی در سشن نمی‌نویسند، پس قفل را همین‌جا آزاد می‌کنند تا درخواست‌های هم‌زمان با هم اجرا شوند.
+if ($method === 'GET') session_write_close();
 
 // ==========================================
 // 9. مسیریابی
@@ -663,7 +703,7 @@ $routes = [
         if ($hash === '' || $pass === '' || !password_verify($pass, $hash)) { audit($pdo, '', 'super_login_failed'); throttle_fail($pdo, $key); fail('رمز وارد شده معتبر نیست.', 401); }
         throttle_clear($pdo, $key);
         session_regenerate_id(true);
-        $_SESSION['super'] = true;
+        $_SESSION['super'] = true; $_SESSION['last_activity'] = time();
         audit($pdo, '', 'super_login');
         respond(['success' => true] + session_info());
     },
@@ -684,7 +724,7 @@ $routes = [
         $closed = tenant_closed_reason($t);
         if ($closed !== null && $role === 'USER') fail($closed, 403);
         session_regenerate_id(true);
-        $_SESSION['tenants'][$orgId] = $role;
+        $_SESSION['tenants'][$orgId] = $role; $_SESSION['last_activity'] = time();
         audit($pdo, $orgId, 'login', '', ['role' => $role]);
         respond(['success' => true, 'role' => $role, 'tenant' => tenant_client_view($t, is_super())]);
     },
@@ -713,21 +753,7 @@ $routes = [
     },
 
     // --- سازمان‌ها ---
-    'GET get_tenants' => function () use ($pdo) {
-        require_super();
-        $stats = [];
-        foreach ($pdo->query("SELECT tenant_id, COUNT(*) AS c, MAX(issued_at) AS last FROM cards GROUP BY tenant_id") as $r) $stats[$r['tenant_id']] = $r;
-        $out = [];
-        foreach ($pdo->query("SELECT data, created_at FROM tenants ORDER BY created_at DESC") as $row) {
-            $t = json_decode($row['data'], true);
-            if (!is_array($t)) continue;
-            $v = tenant_client_view($t, true);
-            $st = $stats[$t['id'] ?? ''] ?? null;
-            $v['stats'] = ['cardCount' => $st ? (int)$st['c'] : 0, 'lastIssuedAt' => $st ? $st['last'] : null, 'createdAt' => $row['created_at']];
-            $out[] = $v;
-        }
-        respond($out);
-    },
+    'GET get_tenants' => function () use ($pdo) { require_super(); respond(list_tenants_with_stats($pdo)); },
     'GET ping' => function () { respond(['ok' => true]); },
     'POST save_platform_settings' => function () use ($pdo, $input) {
         require_super();
@@ -1078,9 +1104,7 @@ $routes = [
     },
 
     // --- فونت‌ها ---
-    'GET get_fonts' => function () use ($pdo) {
-        respond($pdo->query("SELECT id, font_key, font_name, font_url FROM global_fonts ORDER BY font_name ASC")->fetchAll());
-    },
+    'GET get_fonts' => function () use ($pdo) { respond(load_fonts($pdo)); },
     'POST save_font' => function () use ($pdo, $input) {
         require_super();
         $key = in_str($input, 'font_key', 64); $name = in_str($input, 'font_name', 100); $url = in_str($input, 'font_url', 1000);
@@ -1103,11 +1127,7 @@ $routes = [
     },
 
     // --- دیکشنری ---
-    'GET get_dictionaries' => function () use ($pdo) {
-        $out = [];
-        foreach ($pdo->query("SELECT id, lang_code, lang_name, translations FROM dictionaries ORDER BY id ASC") as $row) { $row['translations'] = json_decode((string)$row['translations'], true); $out[] = $row; }
-        respond($out);
-    },
+    'GET get_dictionaries' => function () use ($pdo) { respond(load_dictionaries($pdo)); },
 
     // --- بوم‌های آماده ---
     'GET get_templates' => function () use ($pdo) {
@@ -1166,8 +1186,18 @@ $routes = [
     },
 
     // --- قوانین اعتبارسنجی ---
-    'GET get_validations' => function () use ($pdo) {
-        respond($pdo->query("SELECT id, title, pattern, error_msg FROM card_validations ORDER BY id DESC")->fetchAll());
+    'GET get_validations' => function () use ($pdo) { respond(list_validations($pdo)); },
+    // همه‌ی داده‌های شروع برنامه در یک درخواست (به جای شش درخواست که بخشی از آن‌ها پشت سر هم اجرا می‌شدند)
+    'GET bootstrap' => function () use ($pdo) {
+        $out = session_info() + ['dictionaries' => load_dictionaries($pdo), 'fonts' => load_fonts($pdo), 'validations' => list_validations($pdo)];
+        $key = is_string($_GET['org'] ?? null) ? $_GET['org'] : '';
+        if ($key !== '') {
+            $t = find_tenant($pdo, $key);
+            if (!$t) fail('سازمان یافت نشد', 404);
+            $out['tenantPublic'] = tenant_public_view($t);
+            if (is_super() || tenant_role((string)$t['id'])) $out['tenant'] = tenant_client_view($t, is_super());
+        } elseif (is_super()) $out['tenantList'] = list_tenants_with_stats($pdo);
+        respond($out);
     },
     'POST save_validation' => function () use ($pdo, $input) {
         require_super();
