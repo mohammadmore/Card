@@ -844,7 +844,7 @@ function TenantFormPreview({ data, formData, setFormData, t, globalValidations }
 function TenantDashboardPreview({ data, previewFormData, t }) {
     const ownerName = (data.dashboardNameFormat && data.dashboardNameFormat.length > 0) ? data.dashboardNameFormat.map(id => previewFormData[id] || `(...)`).join(' ') : '---';
     return (
-        <div className="max-w-6xl mx-auto w-full bg-slate-50 p-6 rounded-2xl border"><header className="bg-white px-6 py-4 rounded-2xl shadow-sm mb-6 flex flex-col sm:flex-row justify-between items-center gap-4"><div><h1 className="text-xl font-bold">{t('dashboard_title')}</h1></div></header><div className="bg-white rounded-2xl shadow-sm border overflow-hidden"><table className="w-full text-right"><thead className="bg-slate-50 border-b"><tr><th className="p-4">{t('row_num')}</th><th className="p-4 text-indigo-700">{t('card_owner')}</th><th className="p-4">{t('requester')}</th><th className="p-4 text-center">{t('status')}</th></tr></thead><tbody className="divide-y text-slate-800"><tr className="hover:bg-slate-50"><td className="p-4">#1</td><td className="p-4 font-bold text-indigo-900">{ownerName}</td><td className="p-4 text-slate-500">Preview</td><td className="p-4 text-center"><span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">{t('issued')}</span></td></tr></tbody></table></div></div>
+        <div className="max-w-6xl mx-auto w-full bg-slate-50 p-6 rounded-2xl border"><header className="bg-white px-6 py-4 rounded-2xl shadow-sm mb-6 flex flex-col sm:flex-row justify-between items-center gap-4"><div><h1 className="text-xl font-bold">{t('dashboard_title')}</h1></div></header><div className="bg-white rounded-2xl shadow-sm border overflow-x-auto"><table className="w-full text-right min-w-[520px]"><thead className="bg-slate-50 border-b"><tr><th className="p-4">{t('row_num')}</th><th className="p-4 text-indigo-700">{t('card_owner')}</th><th className="p-4">{t('requester')}</th><th className="p-4 text-center">{t('status')}</th></tr></thead><tbody className="divide-y text-slate-800"><tr className="hover:bg-slate-50"><td className="p-4">#1</td><td className="p-4 font-bold text-indigo-900">{ownerName}</td><td className="p-4 text-slate-500">Preview</td><td className="p-4 text-center"><span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">{t('issued')}</span></td></tr></tbody></table></div></div>
     );
 }
 
@@ -1147,13 +1147,13 @@ function VisualEditor({ side, bgUrl, defaultDim, fixed = false, bgFit = 'stretch
     return (
         <div className="h-full flex flex-col">
             {showTplManager && <TemplatesManagerModal templates={templates} data={data} onClose={() => setShowTplManager(false)} onChanged={fetchTemplates} />}
-            <div className="bg-indigo-950/70 backdrop-blur-md border-b border-white/10 px-4 py-2 flex flex-wrap items-center justify-between z-10 gap-2 text-white">
-                <div className="flex gap-2 flex-wrap">
+            <div className="bg-indigo-950/70 backdrop-blur-md border-b border-white/10 px-3 lg:px-4 py-2 flex flex-wrap max-lg:flex-nowrap max-lg:overflow-x-auto items-center justify-between z-10 gap-2 text-white">
+                <div className="flex gap-2 flex-wrap max-lg:flex-nowrap shrink-0">
                     <select value="" aria-label="لود بوم آماده" onChange={e => loadTemplate(e.target.value)} className="bg-indigo-800 text-white text-xs px-2 py-1.5 rounded outline-none border border-indigo-700"><option value="">+ لود بوم آماده...</option>{templates.map(tp => <option key={tp.id} value={tp.id}>{tp.title}{tp.settings ? ` — ${tp.settings.cardLayout === 'single' ? 'تک‌رو' : 'دورو'} ${tp.settings.canvasW}×${tp.settings.canvasH}` : ''}</option>)}</select>
                     <button onClick={saveTemplate} className="bg-indigo-700 hover:bg-indigo-600 text-xs px-3 py-1.5 rounded font-bold transition-colors">ذخیره این بوم</button>
                     <button onClick={() => setShowTplManager(true)} className="bg-indigo-800 hover:bg-indigo-700 text-xs px-3 py-1.5 rounded font-bold border border-indigo-700">مدیریت بوم‌ها</button>
                 </div>
-                <div className="flex items-center gap-1 text-xs">
+                <div className="flex items-center gap-1 text-xs shrink-0">
                     <button type="button" onClick={() => setShowLayers(v => !v)} aria-pressed={showLayers} className={`flex items-center gap-1 px-2.5 py-1.5 rounded font-bold ${showLayers ? 'bg-white text-indigo-900' : 'bg-indigo-800 hover:bg-indigo-700'}`}><Icon name="Layers" className="w-3.5 h-3.5" /> لایه‌ها</button>
                     <button type="button" onClick={() => setSnapOn(v => !v)} aria-pressed={snapOn} title="چسبیدن به خطوط راهنما (Alt هنگام کشیدن = موقتاً خاموش)" className={`flex items-center gap-1 px-2.5 py-1.5 rounded font-bold ${snapOn ? 'bg-white text-indigo-900' : 'bg-indigo-800 hover:bg-indigo-700'}`}><Icon name="Magnet" className="w-3.5 h-3.5" /> چسبیدن</button>
                     <span className="w-px h-5 bg-indigo-700 mx-1" />
@@ -1162,8 +1162,8 @@ function VisualEditor({ side, bgUrl, defaultDim, fixed = false, bgFit = 'stretch
                     <button type="button" onClick={() => stepZoom(1)} aria-label="بزرگ‌نمایی" title="بزرگ‌نمایی" className="p-1.5 rounded bg-indigo-800 hover:bg-indigo-700"><Icon name="ZoomIn" className="w-3.5 h-3.5" /></button>
                 </div>
             </div>
-            <div className="glass-soft border-b border-white/50 px-4 py-3 flex flex-wrap items-center justify-between z-10 gap-4 overflow-x-auto">
-                <div className="flex gap-2 flex-wrap">
+            <div className="glass-soft border-b border-white/50 px-3 lg:px-4 py-2 lg:py-3 flex flex-wrap max-lg:flex-nowrap items-center justify-between z-10 gap-2 lg:gap-4 overflow-x-auto">
+                <div className="flex gap-2 flex-wrap max-lg:flex-nowrap shrink-0">
                     <button onClick={() => addField('text')} className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-sm font-medium shrink-0"><Icon name="Type" className="w-4 h-4" /> متن</button>
                     <button onClick={() => addField('select')} className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-sm font-medium shrink-0"><Icon name="LayoutTemplate" className="w-4 h-4" /> انتخابی</button>
                     <button onClick={() => addField('date')} className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-sm font-medium shrink-0"><Icon name="Calendar" className="w-4 h-4" /> تاریخ</button>
@@ -1172,7 +1172,7 @@ function VisualEditor({ side, bgUrl, defaultDim, fixed = false, bgFit = 'stretch
                     <button onClick={() => addField('photo')} className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded-lg text-sm font-bold border shrink-0"><Icon name="Image" className="w-4 h-4" /> عکس</button>
                     <button onClick={() => addField('stars')} className="flex items-center gap-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 px-3 py-1.5 rounded-lg text-sm font-bold border border-amber-200 shrink-0"><Icon name="Star" className="w-4 h-4" /> ستاره‌ها</button>
                 </div>
-                <div className="flex items-center gap-2 w-full max-w-sm shrink-0">
+                <div className="flex items-center gap-2 w-full max-w-sm max-lg:w-64 shrink-0">
                     <label className={`bg-slate-200 p-2 rounded-lg cursor-pointer ${uploading ? 'opacity-50 animate-pulse' : ''}`} title="آپلود عکس زمینه"><Icon name="UploadCloud" className="w-4 h-4 text-slate-700" /><span className="sr-only">آپلود عکس زمینه</span><input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; setUploading(true); const url = await uploadImageFile(f, { maxSize: BG_MAX_SIZE }); setUploading(false); if (url) { rescaleFrom.current = { ...bgDim }; onUpdateBg(url); } }} /></label>
                     <Icon name="Link" className="w-4 h-4 text-slate-400 shrink-0" /><input type="text" aria-label="لینک عکس زمینه" value={bgUrl || ''} onChange={e => onUpdateBg(e.target.value)} placeholder="یا لینک عکس..." className="flex-1 text-sm border-none bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500" dir="ltr" />
                     <span className="text-[10px] text-slate-500 font-mono shrink-0" dir="ltr" title="ابعاد بوم (پیکسل)">{bgDim.w}×{bgDim.h}</span>
@@ -1188,7 +1188,7 @@ function VisualEditor({ side, bgUrl, defaultDim, fixed = false, bgFit = 'stretch
                                 {f.locked && <Icon name="Lock" className="w-3.5 h-3.5 absolute top-1 left-1 text-amber-700 opacity-80" />}
                                 {f.type === 'stars' ? <StarsBoxPreview field={f} /> : f.type === 'barcode' ? <div className="flex flex-col items-center opacity-70 w-full h-full justify-center pointer-events-none overflow-hidden"><span className="font-bold tracking-widest text-xs font-mono">||| |||| || |</span><span className="text-[10px] mt-1">{f.linkedFieldId ? 'متصل' : 'دستی'}</span></div> : f.type === 'qrcode' ? <div className="flex flex-col items-center opacity-70 w-full h-full justify-center pointer-events-none text-center overflow-hidden"><Icon name="QrCode" className="w-8 h-8 mb-1" /><span className="text-[10px] leading-tight">{f.qrSource === 'verify' ? 'استعلام اعتبار' : (f.linkedFieldId ? 'متصل ' + (f.qrTemplate ? '(لینک دار)' : '') : 'دستی')}</span></div> : <span className="text-sm font-bold opacity-70 px-1 rounded pointer-events-none text-center overflow-hidden">{f.label}{f.required ? ' *' : ''} {f.printOnCard ? '' : '(مخفی)'}</span>}
                                 {selectedId === f.id && !f.locked && RESIZE_HANDLES.map(([dir, lx, ty, cursor]) => (
-                                    <span key={dir} onPointerDown={(e) => startInteraction(e, f.id, dir)} className="absolute w-3 h-3 bg-white border-2 border-indigo-600 rounded-sm z-50" style={{ left: `calc(${lx}% - 6px)`, top: `calc(${ty}% - 6px)`, cursor }} aria-hidden="true" />
+                                    <span key={dir} onPointerDown={(e) => startInteraction(e, f.id, dir)} className="resize-handle absolute w-3 h-3 bg-white border-2 border-indigo-600 rounded-sm z-50" style={{ left: `calc(${lx}% - 6px)`, top: `calc(${ty}% - 6px)`, cursor }} aria-hidden="true" />
                                 ))}
                             </div>
                         ))}
@@ -2240,10 +2240,27 @@ const readWizardDraft = (id) => { try { const raw = localStorage.getItem(wizardD
 const writeWizardDraft = (id, draft) => { try { localStorage.setItem(wizardDraftKey(id), JSON.stringify(draft)); } catch (e) { } };
 const removeWizardDraft = (id) => { try { localStorage.removeItem(wizardDraftKey(id)); } catch (e) { } };
 
+/** پیام قابل‌بستن در طراح کارت روی صفحه‌ی لمسی/باریک: طراحی ممکن است ولی صفحه‌ی بزرگ‌تر راحت‌تر است. */
+function MobileEditorHint() {
+    const KEY = 'hide_mobile_editor_hint';
+    const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; } });
+    if (hidden) return null;
+    return (
+        <div role="note" className="lg:hidden m-3 mb-0 flex items-start gap-2 bg-indigo-50 border border-indigo-100 text-indigo-900 rounded-xl p-3 text-xs">
+            <Icon name="Monitor" className="w-4 h-4 shrink-0 mt-0.5" />
+            <span className="flex-1">طراحی کارت در گوشی هم ممکن است: المان را با انگشت بکشید و برای تنظیماتش رویش بزنید. برای طراحی دقیق، تبلت یا کامپیوتر راحت‌تر است.</span>
+            <button type="button" onClick={() => { setHidden(true); try { localStorage.setItem(KEY, '1'); } catch (e) { } }} aria-label="بستن پیام" className="p-1 -m-1 rounded hover:bg-indigo-100"><Icon name="X" className="w-4 h-4" /></button>
+        </div>
+    );
+}
+
 function SuperAdminWizard({ initialData, globalFonts, globalValidations, t, onComplete, onCancel }) {
     const [data, setData, history] = useUndoableState(() => ({ ...INITIAL_WIZARD_DATA, theme: { ...platformState.defaultTheme }, ...(initialData || {}), adminPass: '', publicPass: '' }));
     const isEdit = !!data.id;
-    const [step, setStep] = useState(1); const [isSaving, setIsSaving] = useState(false); const [previewFormData, setPreviewFormData] = useState({}); const [stepError, setStepError] = useState(''); const [selectedFieldId, setSelectedFieldId] = useState(null); const [dbPresets, setDbPresets] = useState([]); const [uploadingLogo, setUploadingLogo] = useState(false);
+    const [step, setStep] = useState(1);
+    // در صفحه‌های باریک (زیر lg) تنظیمات و پیش‌نمایش کنار هم جا نمی‌شوند: هر بار یکی تمام‌عرض نمایش داده می‌شود
+    const [mobilePane, setMobilePane] = useState('settings');
+    useEffect(() => { setMobilePane(step === 3 || step === 4 ? 'preview' : 'settings'); }, [step]); const [isSaving, setIsSaving] = useState(false); const [previewFormData, setPreviewFormData] = useState({}); const [stepError, setStepError] = useState(''); const [selectedFieldId, setSelectedFieldId] = useState(null); const [dbPresets, setDbPresets] = useState([]); const [uploadingLogo, setUploadingLogo] = useState(false);
     // آیا رمزها روی سرور تعیین شده‌اند (برای ویرایش: خالی گذاشتن = بدون تغییر)
     const [passSet, setPassSet] = useState({ admin: !!(initialData && initialData.id && initialData.hasAdminPass), public: !!(initialData && initialData.id && initialData.hasPublicPass) });
     const [savedJson, setSavedJson] = useState(() => (initialData && initialData.id) ? JSON.stringify(stripWizardSecrets({ ...INITIAL_WIZARD_DATA, ...initialData })) : null);
@@ -2336,12 +2353,17 @@ function SuperAdminWizard({ initialData, globalFonts, globalValidations, t, onCo
     const nextStep = () => { if (step === 7 && formHasErrors(getVisibleFields(data.fields, data), previewFormData, t, globalValidations)) return notify(t('fix_errors')); const i = visibleSteps.indexOf(step); goTo(visibleSteps[Math.min(i + 1, visibleSteps.length - 1)]); };
     const prevStep = () => { const i = visibleSteps.indexOf(step); goTo(visibleSteps[Math.max(i - 1, 0)]); };
     const sideEditor = (side, bgKey) => <VisualEditor side={side} bgUrl={data[bgKey]} defaultDim={getCanvasDefault(data)} fixed={isFixedCanvas(data)} bgFit={data.bgFit || 'stretch'} fields={(data.fields || []).filter(f => f.side === side)} onUpdateFields={(newFields, opts) => setData(p => ({ ...p, fields: [...(p.fields || []).filter(f => f.side !== side), ...newFields] }), opts)} onUpdateBg={(url) => setData(p => ({ ...p, [bgKey]: url }))} data={data} setData={setData} selectedId={selectedFieldId} setSelectedId={setSelectedFieldId} />;
+    // نمایش موبایل: مرحله ۱ فقط تنظیمات، مرحله ۵ فقط محتوای اصلی، مراحل ۲ تا ۴ با سوییچ؛ تنظیمات المان در طراح کارت به شکل برگه‌ی پایینی
+    const isEditorStep = step === 3 || step === 4;
+    const sheetMode = isEditorStep && !!selectedFieldId && mobilePane === 'preview';
+    const previewHiddenMobile = step === 1 || ((step === 2 || isEditorStep) && mobilePane === 'settings');
+    const sidebarHiddenMobile = step === 5 || ((step === 2 || isEditorStep) && mobilePane === 'preview' && !sheetMode);
     const passPlaceholder = (key) => (key === 'hasAdminPass' ? passSet.admin : passSet.public) ? t('pass_keep_hint') : '';
 
     return (
         <div className="h-screen flex flex-col w-full">
-            <header className="glass border-b border-white/60 px-4 md:px-6 py-3 flex flex-wrap gap-3 justify-between items-center z-10">
-                <div className="flex items-center gap-3"><button onClick={cancel} aria-label="خروج از ویزارد" title="خروج" className="p-2 hover:bg-slate-100 rounded-full"><Icon name="ArrowRight" /></button><div><h2 className="font-bold text-lg text-slate-800 flex items-center gap-2">{isEdit ? `${t('edit')}: ${data.orgName || ''}` : t('new_org')}{dirty && <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">ذخیره نشده</span>}</h2><p className="text-xs text-slate-500">{t('step')} {visibleSteps.indexOf(step) + 1} {t('from')} {visibleSteps.length}: {stepTitle(step)}</p></div></div>
+            <header className="glass border-b border-white/60 px-3 md:px-6 py-2 lg:py-3 flex flex-wrap gap-x-3 gap-y-2 justify-between items-center z-10">
+                <div className="flex items-center gap-2 lg:gap-3 min-w-0 max-lg:w-full lg:flex-none"><button onClick={cancel} aria-label="خروج از ویزارد" title="خروج" className="p-2 hover:bg-slate-100 rounded-full shrink-0"><Icon name="ArrowRight" /></button><div className="min-w-0"><h2 className="font-bold text-base lg:text-lg text-slate-800 flex items-center gap-2 min-w-0"><span className="truncate">{isEdit ? `${t('edit')}: ${data.orgName || ''}` : t('new_org')}</span>{dirty && <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full shrink-0">ذخیره نشده</span>}</h2><p className="text-xs text-slate-500 hidden lg:block">{t('step')} {visibleSteps.indexOf(step) + 1} {t('from')} {visibleSteps.length}: {stepTitle(step)}</p></div></div>
                 <nav aria-label="مراحل ویزارد" className="hidden lg:flex gap-1 flex-wrap">{visibleSteps.map((n, i) => {
                     // شماره‌ی مرحله داخل دایره؛ مرحله‌ی فعلی پررنگ، مراحل گذشته با دایره‌ی رنگی
                     const active = step === n; const passed = visibleSteps.indexOf(step) > i;
@@ -2350,20 +2372,29 @@ function SuperAdminWizard({ initialData, globalFonts, globalValidations, t, onCo
                         <span>{stepTitle(n)}</span>
                     </button>);
                 })}</nav>
-                <select aria-label="رفتن به مرحله" value={step} onChange={e => goTo(Number(e.target.value))} className="lg:hidden border rounded-lg px-2 py-1.5 text-sm bg-white">{visibleSteps.map((n, i) => <option key={n} value={n}>{i + 1}. {stepTitle(n)}</option>)}</select>
-                <div className="flex items-center gap-2">
+                <select aria-label="رفتن به مرحله" value={step} onChange={e => goTo(Number(e.target.value))} className="lg:hidden order-last flex-1 min-w-0 border rounded-lg px-3 py-2 text-sm bg-white">{visibleSteps.map((n, i) => <option key={n} value={n}>{i + 1}. {stepTitle(n)}</option>)}</select>
+                <div className="flex items-center gap-1 lg:gap-2 max-lg:order-last">
                     <ThemeToggle compact className="text-slate-600" /><button type="button" onClick={history.undo} disabled={!history.canUndo} aria-label="واگرد (Ctrl+Z)" title="واگرد (Ctrl+Z)" className="p-2 rounded-lg hover:bg-slate-100 disabled:opacity-30"><Icon name="Undo2" className="w-5 h-5" /></button>
                     <button type="button" onClick={history.redo} disabled={!history.canRedo} aria-label="ازنو (Ctrl+Y)" title="ازنو (Ctrl+Y)" className="p-2 rounded-lg hover:bg-slate-100 disabled:opacity-30"><Icon name="Redo2" className="w-5 h-5" /></button>
                     <button type="button" onClick={() => saveTenant(false)} disabled={isSaving || (!dirty && isEdit)} title="ذخیره (Ctrl+S)" className="flex items-center gap-1.5 bg-indigo-600 text-white text-sm font-bold px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50"><Icon name="Save" className="w-4 h-4" /> {isSaving ? t('saving') : 'ذخیره'}</button>
                 </div>
             </header>
-            <div className="flex-1 overflow-hidden flex">
-                <div className={`flex-1 overflow-y-auto relative ${step <= 5 ? 'block' : 'w-full'}`}>
+            <div className="lg:hidden h-1 bg-slate-200/70" aria-hidden="true"><div className="h-full bg-indigo-600 transition-all" style={{ width: `${((visibleSteps.indexOf(step) + 1) / visibleSteps.length) * 100}%` }} /></div>
+            {(step === 2 || isEditorStep) && (
+                <div role="tablist" aria-label="نمایش" className="view-toggle lg:hidden flex gap-1 p-1 mx-3 mt-2 bg-slate-100/80 rounded-xl">
+                    {(isEditorStep ? [['preview', 'Brush', 'طراحی کارت'], ['settings', 'SlidersHorizontal', 'تنظیمات بوم']] : [['settings', 'SlidersHorizontal', 'تنظیمات'], ['preview', 'Eye', 'پیش‌نمایش']]).map(([k, ic, lb]) => (
+                        <button key={k} type="button" role="tab" aria-selected={mobilePane === k} onClick={() => { setMobilePane(k); if (k === 'settings') setSelectedFieldId(null); }} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-bold text-slate-600"><Icon name={ic} className="w-4 h-4" /> {lb}</button>
+                    ))}
+                </div>
+            )}
+            <div className="flex-1 overflow-hidden flex relative">
+                <div className={`flex-1 overflow-y-auto relative ${step <= 5 ? 'block' : 'w-full'} ${previewHiddenMobile ? 'max-lg:hidden' : ''}`}>
+                    {isEditorStep && <MobileEditorHint />}
                     {step === 1 && <div className="h-full flex items-center justify-center text-slate-400 p-8 text-center"><div className="space-y-4"><Icon name="Shield" className="w-16 h-16 mx-auto opacity-50" /><p>هویت سازمان، زبان پلتفرم و اتصالات (وب‌هوک) را تعیین کنید.</p></div></div>}
                     {step === 2 && <div className="h-full relative overflow-hidden"><LiquidBackground colors={themeOf(data)} fixed={false} /><div className="relative h-full flex items-center justify-center p-8 transform scale-90 origin-top"><TenantLoginPreview data={data} t={t} /></div></div>}
                     {step === 3 && sideEditor('front', 'frontBg')}
                     {step === 4 && !single && sideEditor('back', 'backBg')}
-                    {step === 5 && (<div className="h-full p-6 lg:p-12 overflow-y-auto flex flex-col items-center"><div className="max-w-4xl w-full"><FormOrderEditor data={data} setData={setData} /><div className="bg-white p-6 rounded-2xl shadow-sm border mb-6 flex justify-between items-center"><div><h3 className="font-bold text-lg text-slate-800">تخصیص فونت به فیلدها</h3><p className="text-sm text-slate-500">از فونت‌های پیش‌فرض یا آپلودی استفاده کنید.</p></div></div><div className="bg-white rounded-2xl shadow-sm border overflow-hidden"><table className="w-full text-right text-sm"><thead className="bg-slate-50 border-b"><tr><th className="p-4">المان چاپی</th><th className="p-4">انتخاب فونت</th><th className="p-4">پیش‌نمایش</th><th className="p-4">حداکثر سایز (Max px)</th></tr></thead><tbody className="divide-y">{activeFields.filter(f => f.printOnCard && (f.type === 'text' || f.type === 'select' || f.type === 'date')).map(f => (<tr key={f.id} className="hover:bg-slate-50"><td className="p-4 font-bold text-slate-700">{f.label}</td><td className="p-4"><select className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-full max-w-[200px]" value={f.fontFamily || 'Vazirmatn'} onChange={e => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, fontFamily: e.target.value } : df) }))}><optgroup label="پیش‌فرض">{DEFAULT_FONTS.map(font => <option key={font} value={font}>{font}</option>)}</optgroup><optgroup label="کتابخانه مرکزی">{globalFonts.map(font => <option key={font.font_key} value={font.font_name}>{font.font_name}</option>)}</optgroup></select></td><td className="p-4"><span className="font-preview text-xl text-slate-800 whitespace-nowrap" style={{ '--preview-font': `"${f.fontFamily || 'Vazirmatn'}"`, fontWeight: f.fontWeight === 'normal' ? 400 : 700 }}>{f.label || 'نمونه متن'} ۱۲۳ Abc</span></td><td className="p-4"><input type="number" min="8" className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-24 text-center" value={f.maxFontSize || 40} onChange={e => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, maxFontSize: Number(e.target.value) } : df) }))} /> px</td></tr>))}{activeFields.filter(f => f.printOnCard && (f.type === 'text' || f.type === 'select' || f.type === 'date')).length === 0 && <tr><td colSpan="4" className="text-center p-6 text-slate-400">فیلدی برای تنظیم فونت وجود ندارد.</td></tr>}</tbody></table></div></div></div>)}
+                    {step === 5 && (<div className="h-full p-6 lg:p-12 overflow-y-auto flex flex-col items-center"><div className="max-w-4xl w-full"><FormOrderEditor data={data} setData={setData} /><div className="bg-white p-6 rounded-2xl shadow-sm border mb-6 flex justify-between items-center"><div><h3 className="font-bold text-lg text-slate-800">تخصیص فونت به فیلدها</h3><p className="text-sm text-slate-500">از فونت‌های پیش‌فرض یا آپلودی استفاده کنید.</p></div></div><div className="bg-white rounded-2xl shadow-sm border overflow-hidden"><table className="stack-table w-full text-right text-sm"><thead className="bg-slate-50 border-b"><tr><th className="p-4">المان چاپی</th><th className="p-4">انتخاب فونت</th><th className="p-4">پیش‌نمایش</th><th className="p-4">حداکثر سایز (Max px)</th></tr></thead><tbody className="divide-y">{activeFields.filter(f => f.printOnCard && (f.type === 'text' || f.type === 'select' || f.type === 'date')).map(f => (<tr key={f.id} className="hover:bg-slate-50"><td className="p-4 font-bold text-slate-700" data-label="المان چاپی">{f.label}</td><td className="p-4" data-label="انتخاب فونت"><select className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-full max-w-[200px]" value={f.fontFamily || 'Vazirmatn'} onChange={e => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, fontFamily: e.target.value } : df) }))}><optgroup label="پیش‌فرض">{DEFAULT_FONTS.map(font => <option key={font} value={font}>{font}</option>)}</optgroup><optgroup label="کتابخانه مرکزی">{globalFonts.map(font => <option key={font.font_key} value={font.font_name}>{font.font_name}</option>)}</optgroup></select></td><td className="p-4" data-label="پیش‌نمایش"><span className="font-preview text-xl text-slate-800 whitespace-nowrap" style={{ '--preview-font': `"${f.fontFamily || 'Vazirmatn'}"`, fontWeight: f.fontWeight === 'normal' ? 400 : 700 }}>{f.label || 'نمونه متن'} ۱۲۳ Abc</span></td><td className="p-4" data-label="حداکثر سایز"><input type="number" min="8" className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-24 text-center" value={f.maxFontSize || 40} onChange={e => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, maxFontSize: Number(e.target.value) } : df) }))} /> px</td></tr>))}{activeFields.filter(f => f.printOnCard && (f.type === 'text' || f.type === 'select' || f.type === 'date')).length === 0 && <tr><td colSpan="4" className="text-center p-6 text-slate-400">فیلدی برای تنظیم فونت وجود ندارد.</td></tr>}</tbody></table></div></div></div>)}
                     {step === 6 && <div className="h-full relative overflow-hidden"><LiquidBackground colors={themeOf(data)} fixed={false} /><div className="relative h-full flex items-center justify-center p-4"><TenantLoginPreview data={data} t={t} realMode /></div></div>}
                     {step === 7 && <div className="h-full p-6"><TenantFormPreview data={data} formData={previewFormData} setFormData={setPreviewFormData} t={t} globalValidations={globalValidations} /></div>}
                     {step === 8 && (<div className="h-full p-6 flex flex-col items-center justify-center overflow-y-auto"><div className="mb-6 bg-blue-50 text-blue-700 p-4 rounded-xl border border-blue-200 text-sm max-w-2xl w-full text-center shadow-sm">پیش‌نمایش بر اساس داده‌های تستی مرحله قبل ساخته شده است.</div><CardLivePreview config={data} userData={previewFormData} showActions showcase t={t} /></div>)}
@@ -2371,8 +2402,9 @@ function SuperAdminWizard({ initialData, globalFonts, globalValidations, t, onCo
                     {step === 10 && (<div className="h-full flex flex-col items-center justify-center text-center p-8"><div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6"><Icon name="Check" className="w-12 h-12" /></div><h2 className="text-3xl font-bold text-slate-800 mb-4">{t('platform_ready')}</h2><div className="max-w-md w-full mb-24"><SideDimsReport data={data} setData={setData} dims={sideDims} /></div></div>)}
                 </div>
                 {step <= 5 && (
-                    <div className="w-[350px] md:w-[400px] glass-strong border-r border-white/60 z-20 flex flex-col">
-                        <div className="p-6 flex-1 overflow-y-auto space-y-6 custom-scrollbar">
+                    <div className={`w-full lg:w-[400px] glass-strong border-r border-white/60 z-20 flex flex-col ${sidebarHiddenMobile ? 'max-lg:hidden' : ''} ${sheetMode ? 'max-lg:absolute max-lg:inset-x-0 max-lg:bottom-0 max-lg:max-h-[62%] max-lg:rounded-t-3xl max-lg:shadow-2xl max-lg:border-t' : ''}`}>
+                        {sheetMode && <div className="lg:hidden flex items-center justify-between px-4 pt-2"><span className="w-10 h-1.5 rounded-full bg-slate-300 mx-auto" aria-hidden="true" /><button type="button" onClick={() => setSelectedFieldId(null)} className="text-xs font-bold text-slate-600 bg-slate-100 rounded-lg px-3 py-1.5">بستن</button></div>}
+                        <div className="p-4 lg:p-6 flex-1 overflow-y-auto space-y-6 custom-scrollbar">
                             {stepError && <div className="bg-red-100 text-red-700 p-3 rounded-xl text-sm border border-red-200 animate-pulse">{stepError}</div>}
                             {(step === 3 || step === 4) && selectedFieldId ? (<PropertiesSidebarPanel data={data} setData={setData} selectedFieldId={selectedFieldId} onDelete={() => setSelectedFieldId(null)} onSelect={setSelectedFieldId} dbPresets={dbPresets} globalValidations={globalValidations} />) : (
                                 <><h3 className="font-bold text-xl text-indigo-900 border-b pb-2">{stepTitle(step)}</h3>
@@ -2384,12 +2416,19 @@ function SuperAdminWizard({ initialData, globalFonts, globalValidations, t, onCo
                                 </>
                             )}
                         </div>
-                        <div className="p-4 border-t border-white/60 bg-white/40 flex gap-3"><button onClick={prevStep} disabled={step === 1} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg disabled:opacity-50 font-bold">{t('prev_step')}</button><button onClick={nextStep} className="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 flex items-center justify-center gap-2">{t('next_step')} <Icon name="ArrowLeft" className="w-4 h-4" /></button></div>
+                        <div className="hidden lg:flex p-4 border-t border-white/60 bg-white/40 gap-3"><button onClick={prevStep} disabled={step === 1} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg disabled:opacity-50 font-bold">{t('prev_step')}</button><button onClick={nextStep} className="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 flex items-center justify-center gap-2">{t('next_step')} <Icon name="ArrowLeft" className="w-4 h-4" /></button></div>
                     </div>
                 )}
             </div>
+            <div className="lg:hidden border-t border-white/60 glass-strong flex items-center gap-2 px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] z-30">
+                <button type="button" onClick={prevStep} disabled={step === visibleSteps[0]} className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40"><Icon name="ArrowRight" className="w-4 h-4" /> {t('prev_step')}</button>
+                <span className="flex-1 text-center text-xs text-slate-500">{visibleSteps.indexOf(step) + 1} {t('from')} {visibleSteps.length}</span>
+                {step < 10
+                    ? <button type="button" onClick={nextStep} className="flex items-center gap-1.5 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-indigo-700">{t('next_step')} <Icon name="ArrowLeft" className="w-4 h-4" /></button>
+                    : <button type="button" onClick={() => saveTenant(true)} disabled={isSaving} className="flex items-center gap-1.5 bg-green-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-green-700 disabled:opacity-70">{isSaving ? t('saving') : t('final_publish')} <Icon name="CheckCircle2" className="w-4 h-4" /></button>}
+            </div>
             {step >= 6 && (
-                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur shadow-2xl rounded-full px-6 py-3 flex items-center gap-4 border z-50">
+                <div className="hidden lg:flex absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur shadow-2xl rounded-full px-6 py-3 items-center gap-4 border z-50">
                     <button onClick={prevStep} className="text-slate-600 hover:text-indigo-600 font-bold px-4 py-2 rounded-full hover:bg-slate-100 flex items-center gap-2"><Icon name="ArrowRight" className="w-4 h-4" /> {t('prev_step')}</button><div className="w-px h-6 bg-slate-300"></div>
                     {step < 10 ? (<button onClick={nextStep} className="flex items-center gap-2 bg-indigo-600 text-white font-bold px-6 py-2 rounded-full hover:bg-indigo-700 shadow-lg shadow-indigo-200">{t('next_step')} <Icon name="Check" className="w-4 h-4" /></button>) : (<button onClick={() => saveTenant(true)} disabled={isSaving} className="flex items-center gap-2 bg-green-600 text-white font-bold px-6 py-2 rounded-full hover:bg-green-700 shadow-lg shadow-green-200 disabled:opacity-70">{isSaving ? t('saving') : t('final_publish')} <Icon name="CheckCircle2" className="w-5 h-5" /></button>)}
                 </div>

@@ -285,3 +285,20 @@ html.theme-fading, html.theme-fading *, html.theme-fading *::before, html.theme-
 }
 /* دایره‌ی شماره‌ی مرحله‌ی فعلی ویزارد (در هر دو حالت روشن و تیره ثابت) */
 .step-dot-active { background: #fff; color: #4338ca; }
+
+/* ---------- نمایش موبایل ---------- */
+/* آیفون روی ورودی با متن کوچک‌تر از ۱۶px بزرگ‌نمایی می‌کند و صفحه به هم می‌ریزد */
+@media (pointer: coarse) {
+  input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=range]):not([type=file]), select, textarea { font-size: 16px !important; }
+  /* دستگیره‌ی تغییر اندازه همان شکل را دارد ولی ناحیه‌ی لمسش بزرگ‌تر است */
+  .resize-handle::after { content: ''; position: absolute; inset: -12px; }
+}
+/* جدول‌هایی که در صفحه‌ی باریک به کارت‌های زیر هم تبدیل می‌شوند (عنوان هر خانه از data-label) */
+@media (max-width: 1023px) {
+  .stack-table thead { display: none; }
+  .stack-table tr { display: block; padding: 8px 0; }
+  .stack-table td { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 16px !important; }
+  .stack-table td[data-label]::before { content: attr(data-label); font-size: 12px; font-weight: 700; color: #64748b; flex-shrink: 0; }
+  .stack-table td:first-child { font-size: 15px; }
+}
+html.dark .stack-table td[data-label]::before { color: #97a6ba; }
