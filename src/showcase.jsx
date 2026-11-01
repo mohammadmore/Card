@@ -5,7 +5,7 @@ const { useState, useEffect, useRef, useMemo } = React;
 const AUTO_SPEED = 42;          // درجه بر ثانیه (در نزدیکی رو/پشت کندتر می‌شود)
 const HOLD_AFTER_FLIP_MS = 2600; // توقف روی یک رو بعد از دکمه‌ی «روی کارت/پشت کارت»
 const HOLD_AFTER_DRAG_MS = 1400;
-const TILT_X = -7;               // کمی از بالا نگاه می‌کنیم تا لبه‌ی بالایی کارت دیده شود
+const TILT_X = -7;               // دوربین کمی از بالا نگاه می‌کند (روی کل صحنه، نه خود کارت)
 
 const norm180 = (a) => { a = ((a + 180) % 360 + 360) % 360 - 180; return a; };
 
@@ -47,30 +47,58 @@ const edgeSegments = (w, h, r, perCorner = 8) => {
     return segs;
 };
 
-function CardBody({ w, h, faceRefs, edge, withGloss, glossRefs, withEdge = true }) {
+// گوشی و تبلت (اشاره‌گر لمسی): لبه با قطعه‌های کمتر؛ دستگاه خیلی ضعیف: بدون انعکاس
+const COARSE = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+const LOW_END = typeof navigator !== 'undefined' && (navigator.hardwareConcurrency || 8) <= 4 && (navigator.deviceMemory || 8) <= 2;
+
+/**
+ * تصویر انعکاس: همان روی کارت با وضوح کمتر، که کم‌رنگی و محو شدن از خط تماس با زمین یک بار در خود تصویر «پخته» می‌شود.
+ * (opacity روی صحنه‌ی سه‌بعدی آن را تخت می‌کند و ماسک هر فریم هزینه دارد؛ این روش در حین چرخش هیچ هزینه‌ای ندارد.)
+ */
+const copyReflection = (src, dst, maxW, strength = 0.34, fadeTo = 0.5) => {
+    copyCanvas(src, dst, maxW); if (!dst || !dst.width) return;
+    const ctx = dst.getContext('2d'); ctx.globalCompositeOperation = 'destination-in';
+    const g = ctx.createLinearGradient(0, dst.height, 0, 0); // پایینِ تصویر = لبه‌ی تماس با زمین
+    g.addColorStop(0, `rgba(0,0,0,${strength})`); g.addColorStop(fadeTo, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, dst.width, dst.height); ctx.globalCompositeOperation = 'source-over';
+};
+
+function CardBody({ w, h, faceRefs, edge, glossRefs, reflection = false }) {
     const t = Math.max(3, Math.round(w * 0.009)); const r = Math.round(Math.min(w, h) * 0.045);
     const face = (side) => (
-        <div className="sc-face" style={{ width: w, height: h, borderRadius: r, transform: side === 'front' ? `translateZ(${t / 2}px)` : `rotateY(180deg) translateZ(${t / 2}px)` }}>
+        <div className={`sc-face${reflection ? ' sc-face-refl' : ''}`} style={{ width: w, height: h, borderRadius: r, transform: side === 'front' ? `translateZ(${t / 2}px)` : `rotateY(180deg) translateZ(${t / 2}px)` }}>
             <canvas ref={faceRefs[side]} className="sc-canvas" />
-            {withGloss && <><div ref={glossRefs[side + 'Shade']} className="sc-shade" /><div ref={glossRefs[side]} className="sc-gloss" /></>}
+            {glossRefs && <div ref={glossRefs[side + 'Shade']} className="sc-shade" />}
         </div>
     );
-    const segs = useMemo(() => edgeSegments(w, h, r), [w, h, r]);
+    // درخشش: نواری که فقط با transform جابه‌جا می‌شود، روی صفحه‌ای شفاف جلوی هر رو و بدون هیچ برشی
+    // (هر نوع برش، چه گوشه‌گرد چه مستطیلی، در صحنه‌ی سه‌بعدی کروم را به نقاشی مجدد در هر فریم وادار می‌کند).
+    // نوار همیشه داخل کارت می‌ماند و لبه‌ی بالا و پایینش محو است تا از گوشه‌های گرد بیرون نزند.
+    const glossPlane = (side) => (
+        <div className="sc-gloss-plane" style={{ width: w, height: h, transform: side === 'front' ? `translateZ(${t / 2 + 0.3}px)` : `rotateY(180deg) translateZ(${t / 2 + 0.3}px)` }}>
+            <div ref={glossRefs[side]} className="sc-gloss-band" style={{ width: w * 0.6, '--fade': `${Math.round(r * 1.2)}px` }} />
+        </div>
+    );
+    const segs = useMemo(() => (reflection ? [] : edgeSegments(w, h, r, COARSE ? 4 : 8)), [w, h, r, reflection]);
     return (
         <>
-            {/* در انعکاس (آینه‌شده) لبه رسم نمی‌شود؛ کروم آن قطعه‌ها را جلوی رو و پشت کارت مرتب می‌کند و انعکاس خالی می‌ماند */}
-            {withEdge && segs.map((sg, i) => {
+            {/* در انعکاس لبه رسم نمی‌شود: کروم قطعه‌های لبه‌ی آینه‌شده را جلوی دو روی کارت مرتب می‌کند */}
+            {segs.map((sg, i) => {
                 // نور از بالا: لبه‌ی بالایی روشن‌تر، لبه‌ی پایینی تیره‌تر
                 const light = -Math.sin((sg.deg - 90) * Math.PI / 180); // ۱ = رو به بالا، ۱- = رو به پایین
                 const tone = light >= 0 ? `color-mix(in srgb, ${edge} ${Math.round(100 - light * 35)}%, white)` : `color-mix(in srgb, ${edge} ${Math.round(100 + light * 40)}%, black)`;
                 return <div key={i} className="sc-edge" style={{ width: sg.len + 0.6, height: t, left: sg.cx - (sg.len + 0.6) / 2, top: sg.cy - t / 2, background: tone, transform: `rotateZ(${sg.deg}deg) rotateX(90deg)` }} />;
             })}
             {face('front')}{face('back')}
+            {glossRefs && <>{glossPlane('front')}{glossPlane('back')}</>}
         </>
     );
 }
 
 /**
+ * صحنه‌ی فیزیکی: کارت روی زمین صاف ایستاده و فقط حول محور عمودی می‌چرخد؛ دوربین کمی از بالا نگاه می‌کند (TILT_X روی کل صحنه).
+ * انعکاس همان کارت است که در فضای سه‌بعدی حول صفحه‌ی زمین (لبه‌ی پایین کارت) آینه شده و با همان دوربین دیده می‌شود،
+ * پس در هر زاویه لبه‌ی بالای انعکاس دقیقاً به لبه‌ی پایین کارت می‌چسبد. سایه هم روی همان زمین است و با کارت می‌چرخد.
  * @param front, back  بوم‌های رندرشده‌ی دو روی کارت
  * @param version      با هر رندر جدید افزایش می‌یابد تا تصویر کارت به‌روز شود
  */
@@ -81,9 +109,10 @@ export function CardShowcase3D({ front, back, version, t, label, Icon }) {
     const [box, setBox] = useState({ w: 0, h: 0 }); const [edge, setEdge] = useState('#dfe3ea');
     const [playing, setPlaying] = useState(true);
     const reduceMotion = useRef(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const withReflection = !LOW_END;
     // وضعیت حرکت در ref نگه داشته می‌شود تا هر فریم باعث رندر React نشود
-    const m = useRef({ angle: -28, vel: 0, target: null, holdUntil: 0, drag: null, playing: true, visible: true });
-    useEffect(() => { m.current.playing = playing && !reduceMotion.current; if (playing) m.current.holdUntil = 0; }, [playing]);
+    const m = useRef({ angle: -28, vel: 0, target: null, holdUntil: 0, drag: null, playing: true, visible: true, applied: null, reflFront: null });
+    const loop = useRef({ raf: 0, last: 0, kick: () => { } });
 
     const ratio = front && front.width ? front.height / front.width : 0.625;
 
@@ -102,61 +131,85 @@ export function CardShowcase3D({ front, back, version, t, label, Icon }) {
     // کپی تصویر دو رو در وجه‌های کارت و انعکاس
     useEffect(() => {
         if (!box.w) return;
-        const dpr = Math.min(2, window.devicePixelRatio || 1); const maxW = Math.round(box.w * dpr * 1.25);
+        const dpr = Math.min(COARSE ? 1.5 : 2, window.devicePixelRatio || 1); const maxW = Math.round(box.w * dpr * 1.25);
         copyCanvas(front, faces.front.current, maxW); copyCanvas(back, faces.back.current, maxW);
-        copyCanvas(front, reflFaces.front.current, maxW / 2); copyCanvas(back, reflFaces.back.current, maxW / 2);
+        if (withReflection) { copyReflection(front, reflFaces.front.current, maxW / 2); copyReflection(back, reflFaces.back.current, maxW / 2); }
         if (front) setEdge(edgeColorOf(front));
     }, [front, back, version, box.w]);
 
-    // توقف حلقه وقتی کارت در صفحه دیده نمی‌شود
+    // حلقه‌ی انیمیشن: فقط وقتی چیزی در حال حرکت است اجرا می‌شود و وقتی کارت ساکن یا بیرون از صفحه است کاملاً خاموش می‌شود
     useEffect(() => {
-        const el = stageRef.current; if (!el || !window.IntersectionObserver) return;
-        const io = new IntersectionObserver(([e]) => { m.current.visible = e.isIntersecting; }); io.observe(el);
-        return () => io.disconnect();
-    }, []);
-
-    // حلقه‌ی انیمیشن
-    useEffect(() => {
-        let raf = 0; let last = performance.now();
+        const L = loop.current; const w = box.w;
         const apply = () => {
-            const a = m.current.angle; const tr = `rotateX(${TILT_X}deg) rotateY(${a}deg)`;
+            const s = m.current; const a = s.angle;
+            if (s.applied !== null && Math.abs(s.applied - a) < 0.01) return; // بدون تغییر = بدون نوشتن در DOM
+            s.applied = a; const tr = `rotateY(${a}deg)`;
             if (cardRef.current) cardRef.current.style.transform = tr;
-            if (reflRef.current) reflRef.current.style.transform = tr;
-            const cos = Math.abs(Math.cos(a * Math.PI / 180));
-            if (shadowRef.current) shadowRef.current.style.transform = `translateX(-50%) scaleX(${0.18 + 0.82 * cos})`;
+            if (reflRef.current) {
+                reflRef.current.style.transform = tr;
+                // در آینه، مرتب‌سازی عمقِ کروم گاهی وجه اشتباه را جلو می‌آورد؛ پس فقط وجهی که رو به دوربین است نمایش داده می‌شود
+                // (فقط هنگام عبور از لبه، دو بار در هر دور، تغییر می‌کند)
+                const frontFacing = Math.cos(a * Math.PI / 180) > 0;
+                if (s.reflFront !== frontFacing) {
+                    s.reflFront = frontFacing;
+                    const f = reflFaces.front.current, bk = reflFaces.back.current;
+                    if (f) f.parentElement.style.visibility = frontFacing ? 'visible' : 'hidden';
+                    if (bk) bk.parentElement.style.visibility = frontFacing ? 'hidden' : 'visible';
+                }
+            }
+            if (shadowRef.current) shadowRef.current.style.transform = `rotateX(90deg) rotateZ(${-a}deg)`;
             ['front', 'back'].forEach(side => {
                 const local = norm180(side === 'front' ? a : a - 180); // ۰ = رو به بیننده
-                const g = gloss[side].current; const s = gloss[side + 'Shade'].current;
-                if (g) { g.style.backgroundPosition = `${50 - (local / 90) * 55}% 0`; g.style.opacity = String(0.35 + 0.65 * Math.min(1, Math.abs(local) / 50)); }
-                if (s) s.style.opacity = String(Math.min(0.55, (1 - Math.abs(Math.cos(local * Math.PI / 180))) * 0.6));
+                const g = gloss[side].current; const sh = gloss[side + 'Shade'].current;
+                if (g) {
+                    // نوار (۶۰٪ عرض کارت) همیشه داخل کارت می‌ماند و به جای بیرون رفتن از لبه، محو می‌شود؛ بدون برش، بدون نقاشی مجدد
+                    const frac = 0.5 - (local / 90) * 0.55; const c = Math.min(0.7, Math.max(0.3, frac));
+                    const edgeFade = Math.max(0, 1 - Math.abs(frac - c) / 0.3);
+                    g.style.transform = `translateX(${(c * w - w * 0.3).toFixed(1)}px)`;
+                    g.style.opacity = String((0.35 + 0.65 * Math.min(1, Math.abs(local) / 50)) * edgeFade);
+                }
+                if (sh) sh.style.opacity = String(Math.min(0.55, (1 - Math.abs(Math.cos(local * Math.PI / 180))) * 0.6));
             });
         };
         const tick = (now) => {
-            const dt = Math.min(0.05, (now - last) / 1000); last = now; const s = m.current;
-            if (s.visible && !s.drag) {
+            L.raf = 0; const dt = Math.min(0.05, (now - L.last) / 1000); L.last = now; const s = m.current;
+            if (!s.visible) return; // بیرون از صفحه: حلقه متوقف می‌شود و با دیده شدن دوباره راه می‌افتد
+            let moving = !!s.drag;
+            if (!s.drag) {
                 if (s.target !== null) {
-                    const diff = s.target - s.angle; s.angle += diff * Math.min(1, dt * 5.5);
+                    const diff = s.target - s.angle; s.angle += diff * Math.min(1, dt * 5.5); moving = true;
                     if (Math.abs(diff) < 0.15) { s.angle = s.target; s.target = null; s.holdUntil = now + HOLD_AFTER_FLIP_MS; }
                 } else if (Math.abs(s.vel) > 6) {
-                    s.angle += s.vel * dt; s.vel *= Math.exp(-dt * 2.6);
+                    s.angle += s.vel * dt; s.vel *= Math.exp(-dt * 2.6); moving = true;
                     if (s.playing && Math.abs(s.vel) < AUTO_SPEED * 0.5) s.vel = 0;
-                } else if (s.playing && now > s.holdUntil) {
-                    // نزدیک رو و پشت کندتر می‌چرخد تا هر رو کمی بیشتر دیده شود
-                    const sin = Math.abs(Math.sin(s.angle * Math.PI / 180));
-                    s.angle += AUTO_SPEED * (0.32 + 0.68 * sin) * dt;
+                } else if (s.playing) {
+                    moving = true; // در حال توقف کوتاه روی یک رو هم حلقه می‌ماند تا بعدش چرخش ادامه یابد (بدون نوشتن در DOM)
+                    if (now > s.holdUntil) { const sin = Math.abs(Math.sin(s.angle * Math.PI / 180)); s.angle += AUTO_SPEED * (0.32 + 0.68 * sin) * dt; }
                 }
-                if (Math.abs(s.angle) > 3600) s.angle = norm180(s.angle);
+                if (Math.abs(s.angle) > 3600) { s.angle = norm180(s.angle); s.applied = null; }
             }
-            apply(); raf = requestAnimationFrame(tick);
+            apply();
+            if (moving) L.raf = requestAnimationFrame(tick);
         };
-        apply(); raf = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(raf);
+        L.kick = () => { if (!L.raf && m.current.visible) { L.last = performance.now(); L.raf = requestAnimationFrame(tick); } };
+        m.current.applied = null; m.current.reflFront = null; apply(); L.kick();
+        return () => { cancelAnimationFrame(L.raf); L.raf = 0; };
     }, [box.w]);
+
+    useEffect(() => { m.current.playing = playing && !reduceMotion.current; if (playing) m.current.holdUntil = 0; loop.current.kick(); }, [playing]);
+
+    // توقف کامل وقتی کارت در صفحه دیده نمی‌شود
+    useEffect(() => {
+        const el = stageRef.current; if (!el || !window.IntersectionObserver) return;
+        const io = new IntersectionObserver(([e]) => { m.current.visible = e.isIntersecting; if (e.isIntersecting) loop.current.kick(); }); io.observe(el);
+        return () => io.disconnect();
+    }, []);
 
     const onPointerDown = (e) => {
         if (e.button !== undefined && e.button !== 0) return;
         e.currentTarget.setPointerCapture && e.currentTarget.setPointerCapture(e.pointerId);
         const s = m.current; s.drag = { x: e.clientX, angle: s.angle, lastX: e.clientX, lastT: performance.now(), v: 0 }; s.target = null; s.vel = 0;
+        loop.current.kick();
     };
     const onPointerMove = (e) => {
         const s = m.current; const d = s.drag; if (!d) return;
@@ -166,37 +219,47 @@ export function CardShowcase3D({ front, back, version, t, label, Icon }) {
     const onPointerUp = () => {
         const s = m.current; const d = s.drag; if (!d) return;
         s.vel = Math.max(-900, Math.min(900, d.v)); s.drag = null; s.holdUntil = performance.now() + HOLD_AFTER_DRAG_MS;
+        loop.current.kick();
     };
     /** چرخش نرم تا نزدیک‌ترین زاویه‌ای که رو (۰) یا پشت (۱۸۰) کارت را نشان می‌دهد. */
     const showSide = (side) => {
         const s = m.current; const want = side === 'front' ? 0 : 180;
-        s.target = s.angle + norm180(want - s.angle); s.vel = 0;
+        s.target = s.angle + norm180(want - s.angle); s.vel = 0; loop.current.kick();
     };
     const onKeyDown = (e) => {
         const s = m.current;
-        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); s.target = (s.target ?? s.angle) + (e.key === 'ArrowRight' ? 30 : -30); s.vel = 0; }
-        else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); s.target = (s.target ?? s.angle) + 180; s.vel = 0; }
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); s.target = (s.target ?? s.angle) + (e.key === 'ArrowRight' ? 30 : -30); s.vel = 0; loop.current.kick(); }
+        else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); s.target = (s.target ?? s.angle) + 180; s.vel = 0; loop.current.kick(); }
     };
 
     const btn = 'sc-btn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold';
+    const shadowDepth = box.w * 0.55;
     return (
         <div className="sc-wrap w-full flex flex-col items-center print:hidden">
-            <div ref={stageRef} className="sc-stage w-full" style={{ height: box.h ? box.h * 1.24 + 24 : 320 }}
+            <div ref={stageRef} className="sc-stage w-full" style={{ height: box.h ? (withReflection ? box.h * 1.28 + 24 : box.h + 44) : 320 }}
                 onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
                 tabIndex={0} role="img" aria-roledescription="3D" aria-label={label || t('view_3d')} onKeyDown={onKeyDown}>
                 {box.w > 0 && <>
-                    {/* انعکاس و سایه اول رسم می‌شوند تا همیشه زیر کارت باشند، نه روی آن */}
-                    <div className="sc-reflect" style={{ width: box.w, height: box.h * 0.24, top: 12 + box.h + 3 }} aria-hidden="true">
-                        <div className="sc-persp sc-mirror" style={{ width: box.w, height: box.h }}>
-                            <div ref={reflRef} className="sc-card" style={{ width: box.w, height: box.h }}>
-                                <CardBody w={box.w} h={box.h} faceRefs={reflFaces} edge={edge} withEdge={false} />
-                            </div>
+                    {/* سایه با همان دوربین و همان زمین، ولی در لایه‌ی جداگانه زیر صحنه: اگر در همان صحنه باشد،
+                        کروم هنگام مرتب‌سازی عمق، انعکاسِ زیر زمین را اصلاً رسم نمی‌کند */}
+                    <div className="sc-scene" style={{ width: box.w, height: box.h, top: 12 }} aria-hidden="true">
+                        <div className="sc-world" style={{ width: box.w, height: box.h, transform: `rotateX(${TILT_X}deg)` }}>
+                            <div ref={shadowRef} className="sc-floor-shadow" style={{ width: box.w * 1.04, height: shadowDepth, left: -box.w * 0.02, top: box.h - shadowDepth / 2 }} />
                         </div>
                     </div>
-                    <div ref={shadowRef} className="sc-shadow" style={{ width: box.w * 0.92, top: 12 + box.h - 9 }} aria-hidden="true" />
-                    <div className="sc-persp sc-front" style={{ width: box.w, height: box.h, top: 12 }}>
-                        <div ref={cardRef} className="sc-card" style={{ width: box.w, height: box.h }}>
-                            <CardBody w={box.w} h={box.h} faceRefs={faces} edge={edge} withGloss glossRefs={gloss} />
+                    <div className="sc-scene" style={{ width: box.w, height: box.h, top: 12 }}>
+                        {/* دوربین کمی از بالا: کج شدن روی کل صحنه (کارت و انعکاس) حول خط زمین */}
+                        <div className="sc-world" style={{ width: box.w, height: box.h, transform: `rotateX(${TILT_X}deg)` }}>
+                            {withReflection && (
+                                <div className="sc-mirror3d" aria-hidden="true" style={{ width: box.w, height: box.h }}>
+                                    <div ref={reflRef} className="sc-card" style={{ width: box.w, height: box.h }}>
+                                        <CardBody w={box.w} h={box.h} faceRefs={reflFaces} edge={edge} reflection />
+                                    </div>
+                                </div>
+                            )}
+                            <div ref={cardRef} className="sc-card" style={{ width: box.w, height: box.h }}>
+                                <CardBody w={box.w} h={box.h} faceRefs={faces} edge={edge} glossRefs={gloss} />
+                            </div>
                         </div>
                     </div>
                 </>}
