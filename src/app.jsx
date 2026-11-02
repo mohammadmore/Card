@@ -73,11 +73,27 @@ const BG_FITS = [{ key: 'stretch', label: 'کشیدن به اندازه‌ی ب�
 const bgFitOf = (config) => isFixedCanvas(config) ? (config.bgFit || 'stretch') : 'stretch';
 const BG_FIT_CSS = { stretch: '100% 100%', cover: 'cover', contain: 'contain' };
 /** رسم عکس زمینه در بوم با حالت جای‌گیری (کشیدن / پوشش / جای‌گیری کامل). */
+/**
+ * رسم تصویر با کوچک‌سازی باکیفیت: اگر تصویر بیش از دو برابر کوچک می‌شود، پله‌پله (هر بار نصف) و با کیفیت بالا کوچک می‌شود.
+ * کوچک کردن یک‌مرحله‌ای (مثلاً عکس ۱۲۰۰ پیکسلی در قاب ۱۵۰ پیکسلی) جزئیات ریز مثل مو را به نویز و لبه‌های پله‌ای تبدیل می‌کند.
+ * مقیاس فعلی ctx (مثلاً برای صفحه‌های پرتراکم) هم در نظر گرفته می‌شود.
+ */
+const drawImageHQ = (ctx, img, sx, sy, sw, sh, dx, dy, dw, dh) => {
+    const m = ctx.getTransform ? ctx.getTransform() : null; const k = m ? Math.hypot(m.a, m.b) || 1 : 1;
+    const tw = Math.abs(dw) * k; const th = Math.abs(dh) * k;
+    let src = img, x = sx, y = sy, w = sw, h = sh;
+    while (w / 2 >= tw && h / 2 >= th && w >= 4 && h >= 4) {
+        const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w / 2)); c.height = Math.max(1, Math.round(h / 2));
+        const cc = c.getContext('2d'); cc.imageSmoothingEnabled = true; cc.imageSmoothingQuality = 'high'; cc.drawImage(src, x, y, w, h, 0, 0, c.width, c.height);
+        src = c; x = 0; y = 0; w = c.width; h = c.height;
+    }
+    ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(src, x, y, w, h, dx, dy, dw, dh); ctx.restore();
+};
 const drawImageFit = (ctx, img, W, H, fit) => {
     if (fit === 'cover' || fit === 'contain') {
         const s = fit === 'cover' ? Math.max(W / img.width, H / img.height) : Math.min(W / img.width, H / img.height);
-        const w = img.width * s; const h = img.height * s; ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
-    } else ctx.drawImage(img, 0, 0, W, H);
+        const w = img.width * s; const h = img.height * s; drawImageHQ(ctx, img, 0, 0, img.width, img.height, (W - w) / 2, (H - h) / 2, w, h);
+    } else drawImageHQ(ctx, img, 0, 0, img.width, img.height, 0, 0, W, H);
 };
 const sameDim = (a, b) => !!a && !!b && a.w === b.w && a.h === b.h;
 const sameRatio = (a, b) => !!a && !!b && Math.abs(a.w / a.h - b.w / b.h) < 0.01;
@@ -358,7 +374,7 @@ const FALLBACK_FA = {
     "issued": "صادر شده", "font_err": "فونت", "view_print": "مشاهده و چاپ", "edit_info": "ویرایش اطلاعات", "delete_record": "حذف رکورد",
     "page_of": "صفحه {0} از {1}", "settings_panel": "تنظیمات پنل", "new_admin_pass": "رمز عبور مدیر جدید", "new_public_pass": "رمز عبور عمومی کارمندان جدید",
     "save_changes": "ذخیره تغییرات", "delete_confirm": "آیا از حذف این رکورد مطمئن هستید؟", "preview_card": "نمایش و صدور کارت", "render_loading": "در حال بارگذاری...",
-    "download_front": "دانلود روی کارت", "download_image": "دانلود تصویر", "download_pdf": "دانلود PDF", "download_pdf_real": "دانلود PDF ({0} میلی‌متر)", "share": "اشتراک‌گذاری", "theme_toggle": "حالت نمایش", "theme_light": "روشن", "theme_dark": "تیره", "theme_system": "خودکار", "card_list": "فهرست کارت‌ها", "reports": "گزارش‌ها", "report_period": "بازه زمانی", "report_all_time": "همه", "report_last_days": "{0} روز اخیر", "report_variables": "متغیرهای گزارش", "report_no_fields": "این فرم فیلد انتخابی یا متنی ندارد.", "report_pick_vars": "برای دیدن نمودار، یک یا چند متغیر را از بالا انتخاب کنید.", "report_active_filters": "فیلترهای فعال", "report_total": "کل کارت‌های صادرشده", "report_timeline": "روند صدور کارت", "report_auto": "خودکار", "report_daily": "روزانه", "report_weekly": "هفتگی", "report_monthly": "ماهانه", "report_cards": "کارت", "report_cards_n": "{0} کارت", "report_by": "تعداد کارت بر اساس «{0}»", "report_distinct_n": "{0} مقدار متفاوت", "report_chart": "نمودار", "report_table": "جدول", "report_csv": "دانلود CSV", "report_csv_all": "خروجی گزارش", "report_count": "تعداد", "report_percent": "درصد", "report_other_n": "سایر ({0} مقدار)", "report_empty_value": "(خالی)", "report_filter_hint": "کلیک برای فیلتر سایر نمودارها با این مقدار", "report_legend": "راهنما", "report_single_value": "همه کارت‌ها مقدار «{0}» دارند.", "report_variable": "متغیر", "report_value": "مقدار", "remove": "حذف", "view_3d": "نمایش سه‌بعدی", "view_flat": "نمای تخت", "show_front": "روی کارت", "show_back": "پشت کارت", "pause_rotation": "توقف چرخش", "play_rotation": "ادامه چرخش", "showcase_hint": "برای چرخاندن کارت، آن را با ماوس یا انگشت بکشید.", "share_unsupported": "اشتراک‌گذاری فایل در این مرورگر پشتیبانی نمی‌شود؛ از دکمه‌ی دانلود استفاده کنید.", "image_format": "فرمت تصویر", "download_back": "دانلود پشت کارت", "print_pdf": "چاپ / تولید PDF", "no_export_data": "رکوردی برای خروجی وجود ندارد.",
+    "download_front": "دانلود روی کارت", "download_image": "دانلود تصویر", "download_pdf": "دانلود PDF", "download_pdf_real": "دانلود PDF ({0} میلی‌متر)", "share": "اشتراک‌گذاری", "crop_low_quality": "این بخش از عکس برای اندازه‌ی قاب روی کارت کیفیت کافی ندارد و در چاپ تار می‌شود. کادر را بزرگ‌تر کنید یا عکس باکیفیت‌تری انتخاب کنید.", "theme_toggle": "حالت نمایش", "theme_light": "روشن", "theme_dark": "تیره", "theme_system": "خودکار", "card_list": "فهرست کارت‌ها", "reports": "گزارش‌ها", "report_period": "بازه زمانی", "report_all_time": "همه", "report_last_days": "{0} روز اخیر", "report_variables": "متغیرهای گزارش", "report_no_fields": "این فرم فیلد انتخابی یا متنی ندارد.", "report_pick_vars": "برای دیدن نمودار، یک یا چند متغیر را از بالا انتخاب کنید.", "report_active_filters": "فیلترهای فعال", "report_total": "کل کارت‌های صادرشده", "report_timeline": "روند صدور کارت", "report_auto": "خودکار", "report_daily": "روزانه", "report_weekly": "هفتگی", "report_monthly": "ماهانه", "report_cards": "کارت", "report_cards_n": "{0} کارت", "report_by": "تعداد کارت بر اساس «{0}»", "report_distinct_n": "{0} مقدار متفاوت", "report_chart": "نمودار", "report_table": "جدول", "report_csv": "دانلود CSV", "report_csv_all": "خروجی گزارش", "report_count": "تعداد", "report_percent": "درصد", "report_other_n": "سایر ({0} مقدار)", "report_empty_value": "(خالی)", "report_filter_hint": "کلیک برای فیلتر سایر نمودارها با این مقدار", "report_legend": "راهنما", "report_single_value": "همه کارت‌ها مقدار «{0}» دارند.", "report_variable": "متغیر", "report_value": "مقدار", "remove": "حذف", "view_3d": "نمایش سه‌بعدی", "view_flat": "نمای تخت", "show_front": "روی کارت", "show_back": "پشت کارت", "pause_rotation": "توقف چرخش", "play_rotation": "ادامه چرخش", "showcase_hint": "برای چرخاندن کارت، آن را با ماوس یا انگشت بکشید.", "share_unsupported": "اشتراک‌گذاری فایل در این مرورگر پشتیبانی نمی‌شود؛ از دکمه‌ی دانلود استفاده کنید.", "image_format": "فرمت تصویر", "download_back": "دانلود پشت کارت", "print_pdf": "چاپ / تولید PDF", "no_export_data": "رکوردی برای خروجی وجود ندارد.",
     "error_server": "خطا در ارتباط با سرور", "org_not_found": "سازمان یافت نشد.", "success_save": "تنظیمات با موفقیت به‌روزرسانی شد.", "superadmin_panel": "پنل مدیریت",
     "manage_platforms": "مدیریت پلتفرم‌های سازمانی", "base_lists": "لیست‌های پایه", "new_org": "ساخت سازمان جدید", "new_org_desc": "راه‌اندازی پلتفرم اختصاصی",
     "admin_pass": "رمز مدیر", "public_pass": "رمز عمومی", "org_link": "لینک سازمان", "edit": "ویرایش", "delete": "حذف", "copy_org": "کپی کردن پلتفرم",
@@ -493,7 +509,7 @@ const renderCardSide = async ({ config, userData, side, bgUrl, baseBgUrl, showAc
                     ctx.save(); ctx.beginPath(); shapePath(ctx, field.shape, field.x, field.y, field.w, field.h); ctx.clip();
                     const uImgRatio = userImg.width / userImg.height; const fieldRatio = field.w / field.h; let uSrcX = 0, uSrcY = 0, uSrcW = userImg.width, uSrcH = userImg.height;
                     if (uImgRatio > fieldRatio) { uSrcW = userImg.height * fieldRatio; uSrcX = (userImg.width - uSrcW) / 2; } else { uSrcH = userImg.width / fieldRatio; uSrcY = (userImg.height - uSrcH) / 2; }
-                    ctx.drawImage(userImg, uSrcX, uSrcY, uSrcW, uSrcH, field.x, field.y, field.w, field.h); ctx.restore();
+                    drawImageHQ(ctx, userImg, uSrcX, uSrcY, uSrcW, uSrcH, field.x, field.y, field.w, field.h); ctx.restore();
                 } catch (e) { }
             }
         }
@@ -601,9 +617,10 @@ class ErrorBoundary extends React.Component {
 // 3. SHARED VIEWS & MODALS
 // ==========================================
 // کادر برش با نسبت ابعاد همان فیلد عکس (aspect = عرض/ارتفاع) کار می‌کند، نه همیشه مربع.
-function ImageCropperModal({ src, shape, aspect = 1, t, onConfirm, onCancel }) {
+function ImageCropperModal({ src, shape, aspect = 1, targetW = 0, t, onConfirm, onCancel }) {
     useEscape(onCancel);
     const CANVAS_SIZE = 300; const HANDLE_SIZE = 20; const MIN_SIZE = 40;
+    const DPR = Math.min(3, window.devicePixelRatio || 1); // پیش‌نمایش با تراکم واقعی صفحه رسم می‌شود تا روی گوشی تار نباشد
     const ratio = aspect > 0 && isFinite(aspect) ? aspect : 1;
     const [imgObj, setImgObj] = useState(null); const [cropBox, setCropBox] = useState({ x: 50, y: 50, w: 150, h: 150 }); const [dragState, setDragState] = useState({ active: false, mode: null, startX: 0, startY: 0, startBox: null }); const canvasRef = useRef(null);
     useEffect(() => {
@@ -611,13 +628,16 @@ function ImageCropperModal({ src, shape, aspect = 1, t, onConfirm, onCancel }) {
         loadImage(src, false).then(img => {
             if (!alive) return;
             const scale = Math.min(CANVAS_SIZE / img.width, CANVAS_SIZE / img.height); const drawW = img.width * scale; const drawH = img.height * scale; const drawX = (CANVAS_SIZE - drawW) / 2; const drawY = (CANVAS_SIZE - drawH) / 2;
-            setImgObj({ img, scale, drawX, drawY, drawW, drawH });
+            // نسخه‌ی کوچک‌شده‌ی پیش‌نمایش فقط یک بار ساخته می‌شود (نه در هر جابه‌جایی کادر)
+            const preview = document.createElement('canvas'); preview.width = Math.max(1, Math.round(drawW * DPR)); preview.height = Math.max(1, Math.round(drawH * DPR));
+            drawImageHQ(preview.getContext('2d'), img, 0, 0, img.width, img.height, 0, 0, preview.width, preview.height);
+            setImgObj({ img, preview, scale, drawX, drawY, drawW, drawH });
             let w = drawW * 0.8; let h = w / ratio; if (h > drawH * 0.8) { h = drawH * 0.8; w = h * ratio; }
             setCropBox({ w, h, x: drawX + (drawW - w) / 2, y: drawY + (drawH - h) / 2 });
         }).catch(() => { notify('خطا در خواندن تصویر'); onCancel(); });
         return () => { alive = false; };
     }, [src, ratio]);
-    useEffect(() => { const canvas = canvasRef.current; if (!canvas || !imgObj) return; const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE); ctx.drawImage(imgObj.img, imgObj.drawX, imgObj.drawY, imgObj.drawW, imgObj.drawH); ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE); ctx.save(); ctx.beginPath(); shapePath(ctx, shape, cropBox.x, cropBox.y, cropBox.w, cropBox.h); ctx.clip(); ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE); ctx.drawImage(imgObj.img, imgObj.drawX, imgObj.drawY, imgObj.drawW, imgObj.drawH); ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore(); ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.strokeRect(cropBox.x, cropBox.y, cropBox.w, cropBox.h); ctx.fillStyle = '#6366f1'; ctx.fillRect(cropBox.x + cropBox.w - HANDLE_SIZE / 2, cropBox.y + cropBox.h - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE); }, [imgObj, cropBox, shape]);
+    useEffect(() => { const canvas = canvasRef.current; if (!canvas || !imgObj) return; const ctx = canvas.getContext('2d'); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.imageSmoothingQuality = 'high'; ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE); ctx.drawImage(imgObj.preview, imgObj.drawX, imgObj.drawY, imgObj.drawW, imgObj.drawH); ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE); ctx.save(); ctx.beginPath(); shapePath(ctx, shape, cropBox.x, cropBox.y, cropBox.w, cropBox.h); ctx.clip(); ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE); ctx.drawImage(imgObj.preview, imgObj.drawX, imgObj.drawY, imgObj.drawW, imgObj.drawH); ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore(); ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.strokeRect(cropBox.x, cropBox.y, cropBox.w, cropBox.h); ctx.fillStyle = '#6366f1'; ctx.fillRect(cropBox.x + cropBox.w - HANDLE_SIZE / 2, cropBox.y + cropBox.h - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE); }, [imgObj, cropBox, shape]);
     const getPointerPos = (e) => { const rect = canvasRef.current.getBoundingClientRect(); return { x: (e.clientX - rect.left) * CANVAS_SIZE / rect.width, y: (e.clientY - rect.top) * CANVAS_SIZE / rect.height }; };
     const onPointerDown = (e) => { e.currentTarget.setPointerCapture(e.pointerId); const { x, y } = getPointerPos(e); const handleX = cropBox.x + cropBox.w; const handleY = cropBox.y + cropBox.h; const mode = (Math.abs(x - handleX) <= HANDLE_SIZE && Math.abs(y - handleY) <= HANDLE_SIZE) ? 'resize' : 'move'; setDragState({ active: true, mode, startX: x, startY: y, startBox: { ...cropBox } }); };
     const onPointerMove = (e) => {
@@ -634,15 +654,18 @@ function ImageCropperModal({ src, shape, aspect = 1, t, onConfirm, onCancel }) {
         }
     };
     const onPointerUp = () => setDragState(p => ({ ...p, active: false }));
+    // بخش انتخاب‌شده کمتر از ۱٫۵ برابر اندازه‌ی قاب عکس روی کارت پیکسل دارد: کیفیت چاپ پایین خواهد بود
+    const lowQuality = !!imgObj && targetW > 0 && cropBox.w / imgObj.scale < targetW * 1.5;
     const confirm = () => {
         if (!imgObj) return;
         const srcW = cropBox.w / imgObj.scale; const srcH = cropBox.h / imgObj.scale;
         const outW = Math.max(1, Math.round(Math.min(1200, srcW))); const outH = Math.max(1, Math.round(outW / ratio));
         const finalC = document.createElement('canvas'); finalC.width = outW; finalC.height = outH; const ctx = finalC.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, outW, outH);
-        ctx.drawImage(imgObj.img, (cropBox.x - imgObj.drawX) / imgObj.scale, (cropBox.y - imgObj.drawY) / imgObj.scale, srcW, srcH, 0, 0, outW, outH);
+        drawImageHQ(ctx, imgObj.img, (cropBox.x - imgObj.drawX) / imgObj.scale, (cropBox.y - imgObj.drawY) / imgObj.scale, srcW, srcH, 0, 0, outW, outH);
         onConfirm(finalC.toDataURL('image/jpeg', 0.85));
     };
-    return (<div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4"><div role="dialog" aria-modal="true" aria-label={t('crop_title')} className="bg-white rounded-3xl p-6 w-full max-w-sm flex flex-col items-center shadow-2xl"><h3 className="font-bold text-lg mb-4">{t('crop_title')}</h3><div className="relative"><canvas ref={canvasRef} width={CANVAS_SIZE} height={CANVAS_SIZE} className="bg-slate-100 rounded-xl cursor-crosshair touch-none shadow-inner max-w-full" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} /></div><p className="text-xs text-slate-500 mt-4 text-center leading-relaxed">{t('crop_desc')}</p><div className="w-full mt-6 flex gap-3"><button onClick={onCancel} className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl">{t('cancel')}</button><button onClick={confirm} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl">{t('confirm_crop')}</button></div></div></div>);
+    return (<div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4"><div role="dialog" aria-modal="true" aria-label={t('crop_title')} className="bg-white rounded-3xl p-6 w-full max-w-sm flex flex-col items-center shadow-2xl"><h3 className="font-bold text-lg mb-4">{t('crop_title')}</h3><div className="relative"><canvas ref={canvasRef} width={CANVAS_SIZE * DPR} height={CANVAS_SIZE * DPR} style={{ width: CANVAS_SIZE, height: 'auto' }} className="bg-slate-100 rounded-xl cursor-crosshair touch-none shadow-inner max-w-full" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} />
+                {lowQuality && <p role="status" className="mt-3 w-full flex items-start gap-2 text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-2.5"><Icon name="TriangleAlert" className="w-4 h-4 shrink-0 mt-0.5" /><span>{t('crop_low_quality')}</span></p>}</div><p className="text-xs text-slate-500 mt-4 text-center leading-relaxed">{t('crop_desc')}</p><div className="w-full mt-6 flex gap-3"><button onClick={onCancel} className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl">{t('cancel')}</button><button onClick={confirm} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl">{t('confirm_crop')}</button></div></div></div>);
 }
 
 function CameraCaptureModal({ t, onCapture, onCancel }) {
@@ -801,12 +824,12 @@ function SharedFieldsRenderer({ formData, setFormData, inputWarnings, setInputWa
 const usePhotoCrop = (setFormData) => {
     const [cropFile, setCropFile] = useState(null);
     const handlePhotoUpload = async (field, file, pureDataUrl = null) => {
-        const meta = { fieldId: field.id, shape: field.shape, aspect: field.w && field.h ? field.w / field.h : 1 };
+        const meta = { fieldId: field.id, shape: field.shape, aspect: field.w && field.h ? field.w / field.h : 1, targetW: field.w || 0 };
         if (pureDataUrl) { setCropFile({ ...meta, src: pureDataUrl }); return; }
         if (!file) return;
         try { setCropFile({ ...meta, src: await readFileAsDataURL(file) }); } catch (e) { notify('خطا در خواندن فایل'); }
     };
-    const cropModal = (t) => cropFile && <ImageCropperModal src={cropFile.src} shape={cropFile.shape} aspect={cropFile.aspect} t={t} onConfirm={(dataUrl) => { setFormData(p => ({ ...p, [cropFile.fieldId]: dataUrl })); setCropFile(null); }} onCancel={() => setCropFile(null)} />;
+    const cropModal = (t) => cropFile && <ImageCropperModal src={cropFile.src} shape={cropFile.shape} aspect={cropFile.aspect} targetW={cropFile.targetW} t={t} onConfirm={(dataUrl) => { setFormData(p => ({ ...p, [cropFile.fieldId]: dataUrl })); setCropFile(null); }} onCancel={() => setCropFile(null)} />;
     return { handlePhotoUpload, cropModal };
 };
 
