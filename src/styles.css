@@ -1,3 +1,4 @@
+@import './showcase.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -102,32 +103,6 @@ body { background: transparent; }
 .btn-grad { background-image: linear-gradient(120deg, var(--g3, #a855f7), color-mix(in srgb, var(--g2, #38bdf8) 70%, var(--g3, #a855f7)), var(--g1, #f472b6)); background-size: 200% 100%; background-position: 0 0; transition: background-position .6s ease, box-shadow .3s; color: #fff; box-shadow: 0 8px 24px color-mix(in srgb, var(--g3, #a855f7) 35%, transparent); }
 .btn-grad:hover { background-position: 100% 0; }
 .btn-grad:disabled { opacity: .8; cursor: not-allowed; }
-
-/* ---------- نمایش سه‌بعدی کارت دورو ---------- */
-.sc-stage { position: relative; perspective: none; touch-action: pan-y; cursor: grab; user-select: none; -webkit-user-select: none; outline: none; border-radius: 1.5rem; }
-.sc-stage:active { cursor: grabbing; }
-.sc-stage:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--g3) 55%, transparent); }
-.sc-scene { position: absolute; left: 50%; transform: translateX(-50%); perspective: 1600px; perspective-origin: 50% 50%; pointer-events: none; }
-.sc-world { position: relative; transform-style: preserve-3d; transform-origin: 50% 100%; }
-/* انعکاس: آینه‌ی سه‌بعدی حول صفحه‌ی زمین (لبه‌ی پایین کارت) */
-.sc-mirror3d { position: absolute; inset: 0; transform-style: preserve-3d; transform-origin: 50% 100%; transform: scaleY(-1); }
-.sc-card { position: absolute; inset: 0; transform-style: preserve-3d; will-change: transform; }
-/* سایه روی زمین: گرادیان نرم بدون فیلتر blur (روی گوشی ارزان) */
-.sc-floor-shadow { position: absolute; transform-origin: 50% 50%; background: radial-gradient(closest-side, rgba(30, 27, 75, .42), rgba(30, 27, 75, .16) 55%, transparent); }
-.sc-gloss-plane { position: absolute; inset: 0; pointer-events: none; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-.sc-gloss-band { position: absolute; top: 0; left: 0; height: 100%; pointer-events: none; will-change: transform, opacity;
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--fade, 12px), #000 calc(100% - var(--fade, 12px)), transparent);
-  mask-image: linear-gradient(to bottom, transparent, #000 var(--fade, 12px), #000 calc(100% - var(--fade, 12px)), transparent);
-  background: linear-gradient(105deg, transparent 0%, rgba(255,255,255,.18) 35%, rgba(255,255,255,.38) 50%, rgba(255,255,255,.18) 65%, transparent 100%); }
-.sc-face { position: absolute; inset: 0; overflow: hidden; backface-visibility: hidden; -webkit-backface-visibility: hidden; background: #fff; transform-style: flat; }
-/* وجه‌های انعکاس: بدون زمینه‌ی سفید (شفافیت در خود تصویر است) و دیده‌شدن از دو طرف، چون آینه جهت وجه‌ها را برعکس می‌کند */
-.sc-face-refl { background: transparent; backface-visibility: visible; -webkit-backface-visibility: visible; }
-.sc-canvas { display: block; width: 100%; height: 100%; }
-.sc-edge { position: absolute; transform-origin: 50% 50%; }
-.sc-shade { position: absolute; inset: 0; pointer-events: none; will-change: opacity; background: linear-gradient(90deg, rgba(15,23,42,.9), rgba(15,23,42,.55)); opacity: 0; }
-.sc-btn { background: rgba(255,255,255,.6); border: 1px solid rgba(255,255,255,.75); color: #4338ca; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-.sc-btn:hover { background: rgba(255,255,255,.85); }
-.view-toggle button[aria-checked="true"], .view-toggle button[aria-selected="true"] { background: #fff; color: #4338ca; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 
 /* ---------- پنل گزارش ---------- */
 .viz-tip { position: absolute; z-index: 20; transform: translate(-50%, calc(-100% - 8px)); pointer-events: none; white-space: nowrap;
@@ -264,7 +239,6 @@ html.dark .liquid-bg .blob { opacity: .3; } html.dark .liquid-bg .b4 { opacity: 
 html.dark .glass { background: rgba(15, 23, 42, .55); border-color: rgba(255, 255, 255, .08); box-shadow: 0 8px 32px rgba(0, 0, 0, .35); }
 html.dark .glass-strong { background: rgba(17, 24, 39, .84); border-color: rgba(255, 255, 255, .1); box-shadow: 0 16px 48px rgba(0, 0, 0, .45); }
 html.dark .glass-soft { background: rgba(15, 23, 42, .35); border-color: rgba(255, 255, 255, .08); }
-html.dark .sc-btn { background: rgba(30, 41, 59, .7); border-color: rgba(255, 255, 255, .1); color: #c7d2fe; } html.dark .sc-btn:hover { background: rgba(51, 65, 85, .85); }
 html.dark .view-toggle button[aria-checked="true"], html.dark .view-toggle button[aria-selected="true"] { background: #334155; color: #c7d2fe; box-shadow: 0 1px 3px rgba(0, 0, 0, .4); }
 html.dark .viz-tip { background: rgba(30, 41, 59, .97); border-color: rgba(148, 163, 184, .25); box-shadow: 0 6px 20px rgba(0, 0, 0, .4); }
 html.dark .viz-root { --viz-grid: rgba(148, 163, 184, .18); --viz-muted: #3b4a61; --viz-surface: #111827; }

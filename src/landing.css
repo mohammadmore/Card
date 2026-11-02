@@ -1,0 +1,72 @@
+@import './showcase.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* صفحه‌ی معرفی: فونت، رنگ‌های برند (از تنظیمات پلتفرم در landing.php)، حالت تیره */
+@font-face { font-family: 'Vazirmatn'; src: url('fonts/Vazirmatn-Variable.woff2') format('woff2'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Vazirmatn Digits'; src: url('fonts/Vazirmatn-FD-Digits-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; unicode-range: U+0030-0039; }
+@font-face { font-family: 'Vazirmatn Digits'; src: url('fonts/Vazirmatn-FD-Digits-Bold.woff2') format('woff2'); font-weight: 700; font-display: swap; unicode-range: U+0030-0039; }
+@font-face { font-family: 'Vazirmatn Digits'; src: url('fonts/Vazirmatn-FD-Digits-Black.woff2') format('woff2'); font-weight: 900; font-display: swap; unicode-range: U+0030-0039; }
+
+:root { --g1: #f472b6; --g2: #38bdf8; --g3: #a855f7; --bg: #f8fafc; --fg: #0f172a; --muted: #475569; --card: rgba(255, 255, 255, .72); --line: rgba(15, 23, 42, .08); color-scheme: light; }
+html.dark { --bg: #0b1020; --fg: #e2e8f0; --muted: #94a3b8; --card: rgba(30, 41, 59, .55); --line: rgba(255, 255, 255, .08); color-scheme: dark; }
+html { scroll-behavior: smooth; scroll-padding-top: 84px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+body { font-family: 'Vazirmatn', Tahoma, sans-serif; background: var(--bg); color: var(--fg); -webkit-font-smoothing: antialiased; }
+html[lang="fa"] body { font-family: 'Vazirmatn Digits', 'Vazirmatn', Tahoma, sans-serif; }
+.lp-muted { color: var(--muted); }
+.lp-card { background: var(--card); border: 1px solid var(--line); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.lp-line { border-color: var(--line); }
+.lp-grad-text { background: linear-gradient(100deg, var(--g3), var(--g2) 55%, var(--g1)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lp-btn { background: linear-gradient(100deg, var(--g3), var(--g2)); color: #fff; box-shadow: 0 10px 30px -10px color-mix(in srgb, var(--g3) 70%, transparent); transition: transform .2s, box-shadow .2s, filter .2s; }
+.lp-btn:hover { transform: translateY(-1px); filter: brightness(1.06); box-shadow: 0 14px 34px -10px color-mix(in srgb, var(--g3) 80%, transparent); }
+.lp-btn:disabled { opacity: .6; transform: none; cursor: progress; }
+.lp-btn-ghost { border: 1px solid var(--line); background: var(--card); transition: background .2s; }
+.lp-btn-ghost:hover { background: color-mix(in srgb, var(--g3) 10%, var(--card)); }
+.lp-chip { background: color-mix(in srgb, var(--g3) 12%, transparent); color: color-mix(in srgb, var(--g3) 75%, var(--fg)); }
+.lp-icon { background: linear-gradient(135deg, color-mix(in srgb, var(--g3) 18%, transparent), color-mix(in srgb, var(--g2) 18%, transparent)); color: color-mix(in srgb, var(--g3) 80%, var(--fg)); }
+.lp-input { background: color-mix(in srgb, var(--card) 80%, transparent); border: 1px solid var(--line); color: var(--fg); }
+.lp-input:focus { outline: none; border-color: color-mix(in srgb, var(--g3) 60%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--g3) 22%, transparent); }
+.lp-header { background: color-mix(in srgb, var(--bg) 78%, transparent); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--line); }
+
+/* پس‌زمینه‌ی نرم با رنگ‌های برند */
+.lp-aurora { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+.lp-aurora i { position: absolute; border-radius: 9999px; filter: blur(80px); opacity: .35; }
+html.dark .lp-aurora i { opacity: .22; }
+.lp-aurora i:nth-child(1) { width: 42vmax; height: 42vmax; background: var(--g1); top: -18vmax; inset-inline-start: -12vmax; }
+.lp-aurora i:nth-child(2) { width: 38vmax; height: 38vmax; background: var(--g2); top: -10vmax; inset-inline-end: -14vmax; }
+.lp-aurora i:nth-child(3) { width: 30vmax; height: 30vmax; background: var(--g3); top: 22vmax; inset-inline-start: 30%; opacity: .2; }
+
+/* کارت نمایشی بالای صفحه: فقط CSS، سبک و روان */
+.lp-hero-stage { perspective: 1400px; }
+.lp-hero-card { position: relative; width: min(100%, 420px); aspect-ratio: 1.586; border-radius: 22px; transform-style: preserve-3d; animation: lp-float 9s ease-in-out infinite; }
+.lp-hero-card > div { position: absolute; inset: 0; border-radius: 22px; backface-visibility: hidden; -webkit-backface-visibility: hidden; overflow: hidden; box-shadow: 0 30px 60px -25px rgba(30, 27, 75, .45); }
+.lp-hero-front { background: linear-gradient(135deg, var(--g3), var(--g2)); }
+.lp-hero-back { background: linear-gradient(135deg, #1e1b4b, color-mix(in srgb, var(--g3) 55%, #1e1b4b)); transform: rotateY(180deg); }
+.lp-hero-card .lp-shine { position: absolute; inset: -40%; background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, .35) 50%, transparent 60%); animation: lp-shine 6s ease-in-out infinite; }
+@keyframes lp-float { 0%, 100% { transform: rotateY(-18deg) rotateX(8deg) translateY(0); } 50% { transform: rotateY(18deg) rotateX(4deg) translateY(-10px); } }
+@keyframes lp-shine { 0%, 100% { transform: translateX(-30%); } 50% { transform: translateX(30%); } }
+.lp-hero-shadow { width: 70%; height: 26px; margin: 18px auto 0; border-radius: 50%; background: radial-gradient(closest-side, rgba(30, 27, 75, .35), transparent); filter: blur(4px); animation: lp-shadow 9s ease-in-out infinite; }
+html.dark .lp-hero-shadow { background: radial-gradient(closest-side, rgba(0, 0, 0, .6), transparent); }
+@keyframes lp-shadow { 0%, 100% { transform: scaleX(1); opacity: .9; } 50% { transform: scaleX(.85); opacity: .6; } }
+
+/* ظاهر شدن تدریجی بخش‌ها هنگام اسکرول */
+.lp-reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s ease; }
+.lp-reveal.lp-in { opacity: 1; transform: none; }
+.no-js .lp-reveal { opacity: 1; transform: none; }
+
+/* لحظه‌ی ظاهر شدن کارت در دمو */
+.lp-demo-enter { animation: lp-pop .9s cubic-bezier(.2, .9, .25, 1.2) both; }
+@keyframes lp-pop { 0% { opacity: 0; transform: scale(.6) translateY(30px); filter: blur(12px); } 60% { opacity: 1; filter: blur(0); } 100% { opacity: 1; transform: none; } }
+.lp-sparkle { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: radial-gradient(circle, #fff, var(--g2)); animation: lp-spark 1.2s ease-out forwards; pointer-events: none; }
+@keyframes lp-spark { 0% { opacity: 1; transform: translate(0, 0) scale(1); } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(.2); } }
+
+details.lp-faq summary { list-style: none; cursor: pointer; }
+details.lp-faq summary::-webkit-details-marker { display: none; }
+details.lp-faq[open] .lp-chev { transform: rotate(180deg); }
+.lp-prose p { margin: 0 0 1rem; line-height: 2; }
+.lp-price-hl { background: linear-gradient(var(--card), var(--card)) padding-box, linear-gradient(135deg, var(--g3), var(--g2)) border-box; border: 2px solid transparent; }
+
+/* دکمه‌های دموی سه‌بعدی روی پس‌زمینه‌ی صفحه‌ی معرفی */
+.sc-btn { font-family: inherit; }

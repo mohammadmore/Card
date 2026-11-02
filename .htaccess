@@ -1,8 +1,11 @@
 # جلوگیری از نمایش فهرست فایل‌ها
 Options -Indexes
 
+# صفحه‌ی اصلی: صفحه‌ی معرفی (landing.php). برنامه (پنل‌ها و درگاه سازمان‌ها) همان index.html است.
+DirectoryIndex landing.php index.html
+
 # مسدود کردن فایل‌های حساس (کانفیگ، لاگ، سورس، ابزارها)
-<FilesMatch "(^config(\.sample)?\.php$|\.log$|^error_log$|\.md$|\.sql$|^package(-lock)?\.json$|^build\.mjs$|^tailwind\.config\.js$)">
+<FilesMatch "(^config(\.sample)?\.php$|\.log$|^error_log$|\.md$|\.sql$|^package(-lock)?\.json$|^build\.mjs$|^tailwind(\.landing)?\.config\.js$|^commerce\.php$|^landing_defaults\.php$)">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>
@@ -19,6 +22,14 @@ Options -Indexes
 
     # لینک کوتاه سازمان‌ها: /superadmin/acme → index.html (برنامه آدرس را از مسیر می‌خواند)
     RewriteRule ^__rewrite_ping$ api.php?action=ping [L,QSA]
+
+    # صفحه‌ی معرفی (فارسی و انگلیسی) و صفحه‌های قوانین، حریم خصوصی و تماس
+    RewriteRule ^en/?$ landing.php?lang=en [L,QSA]
+    RewriteRule ^en/(terms|privacy|contact)/?$ landing.php?page=$1&lang=en [L,QSA]
+    RewriteRule ^(terms|privacy|contact)/?$ landing.php?page=$1 [L,QSA]
+    RewriteRule ^sitemap\.xml$ landing.php?page=sitemap [L]
+    # ورود سوپرادمین، سفارش آنلاین و پیگیری سفارش (داخل برنامه)
+    RewriteRule ^(admin|order|track)/?$ index.html [L]
     RewriteCond %{REQUEST_URI} ^(.+)/$
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule ^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]/$ %1 [R=301,L]

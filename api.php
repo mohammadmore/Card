@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+define('CARD_API', true);
 
 ini_set('display_errors', '0');
 error_reporting(E_ALL);
@@ -27,7 +28,7 @@ function respond(array $data, int $code = 200): void {
 }
 function fail(string $msg, int $code = 400): void { respond(['error' => $msg], $code); }
 /** خطای اعتبارسنجی همراه شناسه‌ی فیلد، تا فرم به همان فیلد اسکرول کند. */
-function fail_field(string $msg, string $fieldId): void { respond(['error' => $msg, 'field' => $fieldId], 400); }
+function fail_field(string $msg, string|int $fieldId): void { respond(['error' => $msg, 'field' => (string)$fieldId], 400); }
 
 /** پاسخ را برای کاربر می‌فرستد ولی اسکریپت برای کارهای پس‌زمینه (وب‌هوک) ادامه پیدا می‌کند. */
 function respond_and_continue(array $data): void {
@@ -119,7 +120,7 @@ try {
     fail('خطا در اتصال به دیتابیس', 500);
 }
 
-const AUX_SCHEMA_VERSION = '1';
+const AUX_SCHEMA_VERSION = '2';
 function ensure_aux_schema(PDO $pdo): void {
     static $done = false; if ($done) return; $done = true;
     // جدول‌های کمکی یک بار ساخته می‌شوند و نسخه‌ی آن در تنظیمات ثبت می‌شود؛ بعد از آن دیگر هر بار CREATE اجرا نمی‌شود
@@ -128,6 +129,14 @@ function ensure_aux_schema(PDO $pdo): void {
     $pdo->exec("CREATE TABLE IF NOT EXISTS card_counters (tenant_id VARCHAR(64) NOT NULL, field_id VARCHAR(64) NOT NULL, next_val BIGINT NOT NULL, PRIMARY KEY (tenant_id, field_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $pdo->exec("CREATE TABLE IF NOT EXISTS audit_log (id BIGINT AUTO_INCREMENT PRIMARY KEY, tenant_id VARCHAR(64) NOT NULL DEFAULT '', actor VARCHAR(20) NOT NULL, action VARCHAR(40) NOT NULL, target VARCHAR(64) NOT NULL DEFAULT '', details TEXT NULL, ip VARCHAR(64) NOT NULL DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, KEY idx_audit_tenant (tenant_id, created_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $pdo->exec("CREATE TABLE IF NOT EXISTS webhook_logs (id BIGINT AUTO_INCREMENT PRIMARY KEY, tenant_id VARCHAR(64) NOT NULL DEFAULT '', card_id VARCHAR(64) NOT NULL DEFAULT '', url TEXT NOT NULL, http_code INT NOT NULL DEFAULT 0, error VARCHAR(500) NOT NULL DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, KEY idx_wh_tenant (tenant_id, created_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // فروش آنلاین (نسخه‌ی ۲): درخواست مشاوره، سفارش، کد تأیید، محدودیت درخواست، گزارش ارسال اعلان‌ها
+    $pdo->exec("CREATE TABLE IF NOT EXISTS leads (id BIGINT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(120) NOT NULL, org VARCHAR(200) NOT NULL DEFAULT '', mobile VARCHAR(15) NOT NULL, email VARCHAR(190) NOT NULL DEFAULT '', cards VARCHAR(40) NOT NULL DEFAULT '', message TEXT NULL, lang VARCHAR(5) NOT NULL DEFAULT 'fa', status VARCHAR(20) NOT NULL DEFAULT 'new', note TEXT NULL, ip VARCHAR(64) NOT NULL DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, KEY idx_leads_status (status)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS orders (id VARCHAR(32) PRIMARY KEY, code VARCHAR(12) NOT NULL, token CHAR(32) NOT NULL, type VARCHAR(10) NOT NULL DEFAULT 'new', tenant_id VARCHAR(64) NULL, plan TEXT NOT NULL, amount BIGINT NOT NULL DEFAULT 0, status VARCHAR(20) NOT NULL, mobile VARCHAR(15) NOT NULL, data MEDIUMTEXT NOT NULL, payment TEXT NOT NULL, admin_note TEXT NULL, created_at DATETIME NOT NULL, paid_at DATETIME NULL, delivered_at DATETIME NULL, UNIQUE KEY uq_orders_code (code), KEY idx_orders_mobile (mobile), KEY idx_orders_status (status), KEY idx_orders_tenant (tenant_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS otp_codes (mobile VARCHAR(15) PRIMARY KEY, code_hash VARCHAR(255) NOT NULL, expires_at DATETIME NOT NULL, attempts INT NOT NULL DEFAULT 0, sent_at DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS rate_limits (k CHAR(40) PRIMARY KEY, cnt INT NOT NULL DEFAULT 0, window_start DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS notify_log (id BIGINT AUTO_INCREMENT PRIMARY KEY, channel VARCHAR(20) NOT NULL, target VARCHAR(190) NOT NULL DEFAULT '', subject VARCHAR(190) NOT NULL DEFAULT '', ok TINYINT NOT NULL DEFAULT 0, error VARCHAR(500) NOT NULL DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // محتوای صفحه‌ی معرفی (دو زبان) از ۶۴ کیلوبایت بیشتر می‌شود
+    $pdo->exec("ALTER TABLE platform_settings MODIFY v MEDIUMTEXT NOT NULL");
     set_setting($pdo, 'schema_aux', AUX_SCHEMA_VERSION);
 }
 
@@ -259,7 +268,7 @@ function store_tenant(PDO $pdo, string $id, array $data): void {
 }
 
 // --- آدرس اختصاصی (slug) سازمان: لینک خوانا مثل /superadmin/acme به‌جای شناسه‌ی تصادفی ---
-const RESERVED_SLUGS = ['assets', 'uploads', 'tools', 'src', 'api', 'index', 'admin', 'superadmin', 'node_modules', 'verify', 'login', 'logout', 'public', 'static'];
+const RESERVED_SLUGS = ['assets', 'uploads', 'tools', 'src', 'api', 'index', 'admin', 'superadmin', 'node_modules', 'verify', 'login', 'logout', 'public', 'static', 'order', 'track', 'en', 'fa', 'terms', 'privacy', 'contact', 'about', 'pricing', 'demo', 'sitemap', 'landing', 'commerce', 'shop'];
 function ensure_slug_column(PDO $pdo): void {
     static $done = false; if ($done) return; $done = true;
     if (!$pdo->query("SHOW COLUMNS FROM tenants LIKE 'slug'")->fetch()) $pdo->exec("ALTER TABLE tenants ADD COLUMN slug VARCHAR(64) NULL, ADD UNIQUE KEY uq_tenants_slug (slug)");
@@ -864,6 +873,10 @@ $routes = [
             if ($one) $i18n[$lc] = $one;
         }
         $data['i18n'] = $i18n ?: new stdClass();
+        // پلن: سقف تعداد کارت (۰ = نامحدود) و نام پلن؛ سفارشی که این سازمان از روی آن ساخته شده
+        $data['cardLimit'] = max(0, min(10000000, (int)($input['cardLimit'] ?? 0)));
+        $data['planName'] = in_str($input, 'planName', 80);
+        $data['orderId'] = preg_match('/^ord_[a-f0-9]{16}$/', (string)($input['orderId'] ?? '')) ? (string)$input['orderId'] : (string)($existing['orderId'] ?? '');
         // لوگوی اختیاری برای حالت تیره (خالی = همان لوگوی عادی)
         $data['logoUrlDark'] = trim(in_str($input, 'logoUrlDark', 1000));
         if ($data['logoUrlDark'] !== '' && !valid_image_url($data['logoUrlDark'])) fail_field('لینک لوگوی حالت تیره نامعتبر است. یک فایل آپلود کنید یا لینکی که با https:// شروع می‌شود وارد کنید.', 'logoUrlDark');
@@ -881,6 +894,7 @@ $routes = [
         apply_passwords($data, in_str($input, 'adminPass', 200), in_str($input, 'publicPass', 200), $existing === null || empty($data['adminPassHash']) || empty($data['publicPassHash']));
         store_tenant($pdo, $id, $data);
         audit($pdo, $id, $existing ? 'tenant_update' : 'tenant_create', $id, ['orgName' => $data['orgName']]);
+        if ($data['orderId'] !== '') { try { order_deliver($pdo, $data['orderId'], $data + ['id' => $id], in_str($input, 'adminPass', 200), in_str($input, 'publicPass', 200)); } catch (Throwable $e) { error_log('[order_deliver] ' . $e->getMessage()); } }
         respond(['success' => true, 'id' => $id]);
     },
     'POST change_tenant_passwords' => function () use ($pdo, $input) {
@@ -948,6 +962,11 @@ $routes = [
         $tenant = load_tenant($pdo, $tenantId);
         if (!$tenant) fail('سازمان یافت نشد', 404);
         if (!is_super() && ($closed = tenant_closed_reason($tenant)) !== null) fail($closed, 403);
+        $limit = (int)($tenant['cardLimit'] ?? 0);
+        if ($limit > 0 && !is_super()) {
+            $st = $pdo->prepare("SELECT COUNT(*) FROM cards WHERE tenant_id = ?"); $st->execute([$tenantId]);
+            if ((int)$st->fetchColumn() >= $limit) fail('سقف تعداد کارت‌های پلن این سامانه پر شده است. لطفاً با مدیر سازمان تماس بگیرید.', 403);
+        }
         $requesterName = in_str($input, 'requesterName', 200);
         if ($requesterName === '') fail_field('نام درخواست‌دهنده الزامی است.', '_requester');
         $cardData = validate_card_data($pdo, $tenant, in_arr($input, 'cardData'), null);
@@ -1227,6 +1246,8 @@ $routes = [
     },
 ];
 
+require __DIR__ . '/commerce.php';
+$routes += commerce_routes($pdo, $input, $config);
 $handler = $routes["$method $action"] ?? null;
 if (!$handler) fail('درخواست معتبر نیست', 404);
 $handler();
