@@ -219,7 +219,6 @@ let platformState; const platformListeners = new Set();
 const setPlatform = (p) => { platformState = { ...DEFAULT_PLATFORM, ...(p || {}), footer: { ...DEFAULT_PLATFORM.footer, ...((p && p.footer) || {}) } }; platformListeners.forEach(f => f()); };
 const subscribePlatform = (cb) => { platformListeners.add(cb); return () => platformListeners.delete(cb); };
 const usePlatform = () => React.useSyncExternalStore(subscribePlatform, () => platformState);
-const usePlatformLogo = () => usePlatform().logoUrl;
 // حالت نمایش (روشن / تیره / خودکار طبق تنظیم سیستم‌عامل)، جداگانه برای هر مرورگر. index.html همین را پیش از بارگذاری اعمال می‌کند تا صفحه چشمک نزند.
 const THEME_KEY = 'ui_theme'; const THEME_MODES = ['light', 'dark', 'system'];
 const darkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
@@ -257,13 +256,26 @@ function ThemeToggle({ t, compact = false, className = '' }) {
         </button>
     );
 }
-/** تصویر لوگو: لوگوی سازمان ← لوگوی پلتفرم ← لوگوی پیش‌فرض (در صورت خطای بارگذاری، گزینه‌ی بعدی). */
-function LogoImg({ src, alt = '', className = '', usePlatform = true }) {
-    const plat = usePlatformLogo();
-    const chain = useMemo(() => [...new Set([src, usePlatform && plat, DEFAULT_LOGO].filter(u => u && /^(https?:\/\/|uploads\/|\/|\.\/)/i.test(u)))], [src, plat, usePlatform]);
+const LOGO_URL_RE = /^(https?:\/\/|uploads\/|\/|\.\/)/i;
+const logoChain = (list) => [...new Set(list.filter(u => typeof u === 'string' && u.trim() && LOGO_URL_RE.test(u.trim())).map(u => u.trim()))];
+/** یک تصویر با فهرست جایگزین‌ها: اگر بارگذاری خطا داد، گزینه‌ی بعدی. */
+function FallbackImg({ chain, alt, className }) {
     const [idx, setIdx] = useState(0);
     useEffect(() => setIdx(0), [chain.join('|')]);
     return <img src={chain[Math.min(idx, chain.length - 1)]} alt={alt} className={className} onError={() => setIdx(i => (i < chain.length - 1 ? i + 1 : i))} />;
+}
+/**
+ * تصویر لوگو: لوگوی سازمان ← لوگوی پلتفرم ← لوگوی پیش‌فرض (در صورت خطای بارگذاری، گزینه‌ی بعدی).
+ * اگر برای حالت تیره لوگوی جدا تعیین شده باشد (srcDark یا لوگوی تیره‌ی پلتفرم)، هر دو تصویر ساخته می‌شوند و
+ * CSS بسته به کلاس html.dark یکی را نشان می‌دهد؛ پس با تغییر حالت، لوگو بی‌درنگ و همراه با محو شدن صفحه عوض می‌شود.
+ */
+function LogoImg({ src, srcDark, alt = '', className = '', usePlatform: withPlatform = true }) {
+    const plat = usePlatform();
+    const pl = withPlatform ? plat.logoUrl : ''; const pd = withPlatform ? plat.logoUrlDark : '';
+    const light = useMemo(() => logoChain([src, pl, DEFAULT_LOGO]), [src, pl]);
+    const dark = useMemo(() => logoChain([srcDark, src, pd, pl, DEFAULT_LOGO]), [srcDark, src, pd, pl]);
+    if (dark[0] === light[0]) return <FallbackImg chain={light} alt={alt} className={className} />;
+    return <><FallbackImg chain={light} alt={alt} className={`logo-light ${className}`} /><FallbackImg chain={dark} alt={alt} className={`logo-dark ${className}`} /></>;
 }
 const urlOrgKey = () => new URLSearchParams(window.location.search).get('org') || PATH_ORG;
 // آیا سرور لینک کوتاه (mod_rewrite) را پشتیبانی می‌کند؟ یک بار بررسی می‌شود.
@@ -293,7 +305,7 @@ const THEME_PRESETS = [
 const themeOf = (tn) => ({ ...DEFAULT_THEME, ...((tn && tn.theme) || {}) });
 // مقادیر پیش‌فرض باید با platform_defaults() در api.php یکی باشند
 const DEFAULT_PLATFORM = {
-    name: 'پلتفرم یکپارچه صدور کارت', logoUrl: '', faviconUrl: '',
+    name: 'پلتفرم یکپارچه صدور کارت', logoUrl: '', logoUrlDark: '', faviconUrl: '',
     footer: { show: true, line1: 'Powered by Asva Studio', line2: 'توسعه یافته توسط شرکت داده‌پردازان اسوا', phone: '09966697806', link: 'https://t.me/+989966697806' },
     defaultTheme: DEFAULT_THEME, superTheme: DEFAULT_THEME, idleMinutes: 60, loginMaxAttempts: 5, loginLockMinutes: 15,
 };
@@ -836,7 +848,7 @@ const usePhotoCrop = (setFormData) => {
 function TenantLoginPreview({ data, t, realMode }) {
     return (
         <div className={`glass-strong rounded-3xl p-8 max-w-sm w-full mx-auto text-center flex flex-col h-[500px] ${realMode ? 'ring-2 ring-white/80' : ''}`}>
-            <LogoImg src={data.logoUrl} className="w-24 h-24 mx-auto object-contain mb-4 rounded-xl" />
+            <LogoImg src={data.logoUrl} srcDark={data.logoUrlDark} className="w-24 h-24 mx-auto object-contain mb-4 rounded-xl" />
             <h2 className="text-xl font-bold text-slate-800 mb-2">عضو محترم «{data.orgName || 'سازمان من'}»</h2>
             <p className="text-sm text-slate-500 mb-6">{data.welcomeText || t('enter_passcode')}</p>
             <div className="space-y-4 opacity-50 pointer-events-none mb-4">
@@ -1500,8 +1512,8 @@ function ExcelImportGuideModal({ list, onFile, onClose }) {
     ];
     // روی body رسم می‌شود: داخل پنجره‌ی شیشه‌ای (backdrop-filter) موقعیت fixed نسبت به همان پنجره حساب می‌شد و راهنما بریده می‌شد
     return ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-sm flex items-start sm:items-center justify-center p-4 overflow-y-auto">
-            <div role="dialog" aria-modal="true" aria-labelledby="xl-guide-title" className="glass-strong rounded-3xl p-5 sm:p-6 w-full max-w-3xl my-8 shadow-2xl">
+        <div className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
+            <div role="dialog" aria-modal="true" aria-labelledby="xl-guide-title" className="glass-strong rounded-3xl p-5 sm:p-6 w-full max-w-3xl my-8 sm:my-auto shadow-2xl">
                 <div className="flex justify-between items-start gap-3 mb-4">
                     <div><h3 id="xl-guide-title" className="text-lg font-bold text-slate-800 flex items-center gap-2"><Icon name="FileSpreadsheet" className="w-5 h-5 text-emerald-700" /> {existing ? `ورود از اکسل به «${list.title}»` : 'ساخت لیست پایه از فایل اکسل'}</h3>
                         <p className="text-sm text-slate-500 mt-1">فایل اکسل را با این ساختار آماده کنید. ساده‌ترین راه: فایل نمونه را دانلود کنید، ردیف‌های نمونه را پاک کنید و داده‌های خودتان را جایگزین کنید.</p></div>
@@ -1736,7 +1748,7 @@ function SystemEntry({ mode, tenant, t, langControl, onSuperAdmin, onTenantLogin
         }
     };
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen p-4"><div className="glass-strong p-8 rounded-3xl w-full max-w-md relative overflow-hidden flex flex-col"><div className="relative z-10 flex-1 flex flex-col"><div className="flex justify-between items-center text-slate-600 mb-2"><ThemeToggle t={t} compact />{langControl && <LanguageSwitcher control={langControl} />}</div><div className="flex justify-center mb-6"><LogoImg src={tenant && tenant.logoUrl} alt="Logo" className="h-20 object-contain drop-shadow-2xl rounded-xl" /></div>{tenant && tenant.closedReason && <div role="alert" className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm text-center">{tenant.closedReason}</div>}<h1 className="text-2xl font-bold text-center text-slate-800 mb-2">{tenant ? tenant.orgName : plat.name}</h1><p className="text-center text-slate-600 mb-8 text-sm">{tenant ? (tenant.welcomeText || t('enter_passcode')) : t('enter_passcode')}</p><form onSubmit={handleLogin} className="space-y-4 mb-4"><div><input type="password" aria-label={t('passcode')} value={passcode} onChange={(e) => { setPasscode(e.target.value); setError(''); }} autoComplete="current-password" className="w-full px-4 py-3 bg-white/70 border border-white rounded-xl text-slate-800 text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder={t('passcode')} autoFocus /></div>{error && <p role="alert" className="text-red-600 text-sm text-center">{error}</p>}{lockLeft > 0 && <p role="status" className="text-amber-700 text-sm text-center font-bold">{t('locked_wait', fmtLeft(lockLeft))}</p>}<button type="submit" disabled={busy || !passcode || lockLeft > 0} className="w-full btn-grad py-3 rounded-xl font-bold transition-all">{busy ? t('processing') : t('login')}</button></form><div className="mt-auto pt-6 border-t border-white/60"><BrandingFooter /></div></div></div></div>
+        <div className="flex flex-col items-center justify-center min-h-screen p-4"><div className="glass-strong p-8 rounded-3xl w-full max-w-md relative overflow-hidden flex flex-col"><div className="relative z-10 flex-1 flex flex-col"><div className="flex justify-between items-center text-slate-600 mb-2"><ThemeToggle t={t} compact />{langControl && <LanguageSwitcher control={langControl} />}</div><div className="flex justify-center mb-6"><LogoImg src={tenant && tenant.logoUrl} srcDark={tenant && tenant.logoUrlDark} alt="Logo" className="h-20 object-contain drop-shadow-2xl rounded-xl" /></div>{tenant && tenant.closedReason && <div role="alert" className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm text-center">{tenant.closedReason}</div>}<h1 className="text-2xl font-bold text-center text-slate-800 mb-2">{tenant ? tenant.orgName : plat.name}</h1><p className="text-center text-slate-600 mb-8 text-sm">{tenant ? (tenant.welcomeText || t('enter_passcode')) : t('enter_passcode')}</p><form onSubmit={handleLogin} className="space-y-4 mb-4"><div><input type="password" aria-label={t('passcode')} value={passcode} onChange={(e) => { setPasscode(e.target.value); setError(''); }} autoComplete="current-password" className="w-full px-4 py-3 bg-white/70 border border-white rounded-xl text-slate-800 text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder={t('passcode')} autoFocus /></div>{error && <p role="alert" className="text-red-600 text-sm text-center">{error}</p>}{lockLeft > 0 && <p role="status" className="text-amber-700 text-sm text-center font-bold">{t('locked_wait', fmtLeft(lockLeft))}</p>}<button type="submit" disabled={busy || !passcode || lockLeft > 0} className="w-full btn-grad py-3 rounded-xl font-bold transition-all">{busy ? t('processing') : t('login')}</button></form><div className="mt-auto pt-6 border-t border-white/60"><BrandingFooter /></div></div></div></div>
     );
 }
 
@@ -1800,7 +1812,7 @@ function AuditLogModal({ tenantId, title, t, lang = 'fa', onClose }) {
 const tenantStatus = (tn) => !tn.closedReason ? ['فعال', 'bg-green-50 text-green-700'] : (tn.isActive === false ? ['غیرفعال', 'bg-red-50 text-red-700'] : ['پایان مهلت', 'bg-amber-50 text-amber-700']);
 
 /** آپلود یا لینک یک تصویر (لوگو، آیکون تب) با پیش‌نمایش. */
-function ImageSettingField({ id, label, hint, value, onChange, error, maxSize = 512, previewClass = 'w-20 h-20' }) {
+function ImageSettingField({ id, label, hint, value, onChange, error, maxSize = 512, previewClass = 'w-20 h-20', dark = false, fallback = '', clearLabel = 'بازگشت به پیش‌فرض' }) {
     const [uploading, setUploading] = useState(false);
     const upload = async (file) => { if (!file) return; setUploading(true); const url = await uploadImageFile(file, { keepTransparency: true, maxSize }); setUploading(false); if (url) onChange(url); };
     return (
@@ -1808,13 +1820,13 @@ function ImageSettingField({ id, label, hint, value, onChange, error, maxSize = 
             <label htmlFor={id} className="text-sm font-bold block mb-1">{label}</label>
             {hint && <p className="text-xs text-slate-500 mb-2">{hint}</p>}
             <div className="flex items-center gap-3">
-                <div className={`${previewClass} shrink-0 rounded-2xl bg-white/80 border flex items-center justify-center p-2`}><LogoImg key={value} src={value.trim()} usePlatform={false} alt={`پیش‌نمایش ${label}`} className="max-w-full max-h-full object-contain" /></div>
+                <div className={`${previewClass} shrink-0 rounded-2xl border flex items-center justify-center p-2 ${dark ? 'logo-preview-dark' : 'bg-white/80'}`} title={dark ? 'پیش‌نمایش روی زمینه‌ی تیره' : undefined}><LogoImg key={value} src={value.trim() || fallback} usePlatform={false} alt={`پیش‌نمایش ${label}`} className={`max-w-full max-h-full object-contain ${dark && !value.trim() ? 'opacity-40' : ''}`} /></div>
                 <div className="flex-1 min-w-0 space-y-2">
                     <div className="flex gap-2">
                         <label className={`flex items-center justify-center gap-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-3 py-2 rounded-xl text-xs font-bold cursor-pointer shrink-0 ${uploading ? 'opacity-50 animate-pulse pointer-events-none' : ''}`}><Icon name="UploadCloud" className="w-4 h-4" /> {uploading ? 'در حال آپلود…' : 'آپلود'}<input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files[0]; e.target.value = ''; upload(f); }} /></label>
                         <input id={id} dir="ltr" value={value} onChange={e => onChange(e.target.value)} placeholder="https://..." className="w-full min-w-0 border rounded-xl px-3 py-2 text-sm text-left bg-white/80" aria-invalid={!!error} aria-describedby={error ? `${id}-err` : undefined} />
                     </div>
-                    {value && <button type="button" onClick={() => onChange('')} className="text-xs text-slate-500 hover:text-red-600 underline">بازگشت به پیش‌فرض</button>}
+                    {value && <button type="button" onClick={() => onChange('')} className="text-xs text-slate-500 hover:text-red-600 underline">{clearLabel}</button>}
                 </div>
             </div>
             {error && <p id={`${id}-err`} role="alert" className="text-xs text-red-600 mt-1">{error}</p>}
@@ -1868,7 +1880,7 @@ function PlatformSettingsModal({ onClose }) {
     const themeProxy = (k) => ({ data: { theme: d[k] }, setData: (fn) => setD(p => ({ ...p, [k]: (typeof fn === 'function' ? fn({ theme: p[k] }) : fn).theme })) });
     const save = async () => {
         setSaving(true); setErrors({});
-        const payload = { name: d.name, logoUrl: d.logoUrl.trim(), faviconUrl: d.faviconUrl.trim(), footer: d.footer, defaultTheme: d.defaultTheme, superTheme: d.superTheme, idleMinutes: Number(d.idleMinutes), loginMaxAttempts: Number(d.loginMaxAttempts), loginLockMinutes: Number(d.loginLockMinutes) };
+        const payload = { name: d.name, logoUrl: d.logoUrl.trim(), logoUrlDark: (d.logoUrlDark || '').trim(), faviconUrl: d.faviconUrl.trim(), footer: d.footer, defaultTheme: d.defaultTheme, superTheme: d.superTheme, idleMinutes: Number(d.idleMinutes), loginMaxAttempts: Number(d.loginMaxAttempts), loginLockMinutes: Number(d.loginLockMinutes) };
         try { const r = await apiPost('save_platform_settings', payload); setPlatform(r.platform); notifySuccess('تنظیمات پلتفرم ذخیره شد.'); onClose(); }
         catch (e) {
             if (e.field) { setErrors({ [e.field]: e.message }); setTab(['idleMinutes', 'loginMaxAttempts', 'loginLockMinutes'].includes(e.field) ? 'security' : 'identity'); }
@@ -1893,14 +1905,15 @@ function PlatformSettingsModal({ onClose }) {
     );
     const tabBtn = (k, ic, label) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold text-slate-600"><Icon name={ic} className="w-4 h-4" /> {label}</button>;
     return (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-start sm:items-center justify-center p-4 overflow-y-auto">
-            <div role="dialog" aria-modal="true" aria-label="تنظیمات پلتفرم" className="glass-strong rounded-3xl p-5 sm:p-6 w-full max-w-2xl my-8">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
+            <div role="dialog" aria-modal="true" aria-label="تنظیمات پلتفرم" className="glass-strong rounded-3xl p-5 sm:p-6 w-full max-w-2xl my-8 sm:my-auto">
                 <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Icon name="Settings" className="w-5 h-5" /> تنظیمات پلتفرم</h3><button onClick={onClose} aria-label="بستن" className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full"><Icon name="X" className="w-4 h-4" /></button></div>
                 <div role="tablist" aria-label="بخش‌های تنظیمات" className="view-toggle flex bg-slate-100/80 rounded-xl p-1 mb-5">{tabBtn('identity', 'Palette', 'هویت و ظاهر')}{tabBtn('security', 'ShieldCheck', 'امنیت')}</div>
 
                 {tab === 'identity' && <div className="space-y-5" role="tabpanel">
                     <div>{text('name', 'نام پلتفرم', { maxLength: 80 })}<p className="text-[11px] text-slate-500 mt-1">در عنوان تب مرورگر، صفحه ورود سوپرادمین و سربرگ پنل نمایش داده می‌شود.</p></div>
                     <ImageSettingField id="ps-logo" label="لوگوی پلتفرم" hint="در سربرگ پنل سوپرادمین و صفحه ورود، و برای سازمان‌هایی که لوگوی خودشان را ندارند. تصویر مربع با پس‌زمینه شفاف (PNG) بهترین نتیجه را دارد." value={d.logoUrl} onChange={v => set('logoUrl', v)} error={errors.logoUrl} />
+                    <ImageSettingField id="ps-logo-dark" dark label="لوگوی حالت تیره (اختیاری)" hint="وقتی کاربر حالت نمایش را «تیره» کند، این لوگو جای لوگوی بالا را می‌گیرد؛ مثلاً نسخه‌ی سفید یا روشن لوگو. اگر خالی بماند، در حالت تیره هم همان لوگوی بالا نشان داده می‌شود." value={d.logoUrlDark || ''} onChange={v => set('logoUrlDark', v)} error={errors.logoUrlDark} fallback={d.logoUrl.trim()} clearLabel="حذف (استفاده از لوگوی عادی)" />
                     <ImageSettingField id="ps-favicon" label="آیکون تب مرورگر (favicon)" hint="تصویر مربع ساده، ترجیحاً PNG حداقل ۶۴×۶۴. اگر خالی بماند، لوگوی پیش‌فرض سامانه استفاده می‌شود." value={d.faviconUrl} onChange={v => set('faviconUrl', v)} error={errors.faviconUrl} maxSize={256} previewClass="w-14 h-14" />
                     <div className="space-y-3 bg-white/50 border border-white/70 rounded-xl p-4">
                         <label className="flex items-center gap-2 text-sm font-bold cursor-pointer"><input type="checkbox" checked={d.footer.show} onChange={e => setFooter('show', e.target.checked)} className="accent-indigo-600 w-4 h-4" /> نمایش فوتر در پایین صفحه‌ها</label>
@@ -1970,7 +1983,7 @@ function SuperAdminPanel({ tenants, t, fetchGlobalFonts, fetchGlobalValidations,
                 <button type="button" onClick={onNewWizard} className="glass-soft border-2 border-dashed border-indigo-300 rounded-3xl p-8 flex flex-col items-center justify-center text-indigo-700 hover:bg-white/60 transition-colors cursor-pointer min-h-[220px]"><Icon name="Plus" className="w-12 h-12 mb-3" /><span className="font-bold text-lg">{t('new_org')}</span><span className="text-sm opacity-80 text-center mt-2">{t('new_org_desc')}</span></button>
                 {shown.length === 0 && search && <p className="md:col-span-2 text-center text-slate-400 self-center">سازمانی با این عبارت پیدا نشد.</p>}
                 {shown.map(tn => { const [stLabel, stCls] = tenantStatus(tn); const st = tn.stats || {}; return (<div key={tn.id} className="glass rounded-3xl p-6 flex flex-col min-h-[220px] relative overflow-hidden"><div aria-hidden="true" className="absolute inset-x-0 top-0 h-1.5" style={{ backgroundImage: `linear-gradient(90deg, ${themeOf(tn).c1}, ${themeOf(tn).c2}, ${themeOf(tn).c3})` }} />
-                    <div className="flex items-center gap-4 mb-4">{tn.logoUrl ? <img src={tn.logoUrl} alt="" className="w-12 h-12 rounded-lg object-contain bg-slate-50" /> : <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center"><Icon name="LayoutTemplate" className="text-slate-400" /></div>}<div className="min-w-0"><h3 className="font-bold text-lg text-slate-800 truncate">{tn.orgName}</h3>{tn.slug && <span className="block text-[11px] text-indigo-700 font-mono" dir="ltr">/{tn.slug}</span>}<span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${stCls}`}>{stLabel}{tn.activeUntil ? ` تا ${formatDateTime(tn.activeUntil, 'fa')}` : ''}</span></div></div>
+                    <div className="flex items-center gap-4 mb-4">{tn.logoUrl || tn.logoUrlDark ? <LogoImg src={tn.logoUrl} srcDark={tn.logoUrlDark} usePlatform={false} alt="" className="w-12 h-12 rounded-lg object-contain bg-slate-50" /> : <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center"><Icon name="LayoutTemplate" className="text-slate-400" /></div>}<div className="min-w-0"><h3 className="font-bold text-lg text-slate-800 truncate">{tn.orgName}</h3>{tn.slug && <span className="block text-[11px] text-indigo-700 font-mono" dir="ltr">/{tn.slug}</span>}<span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${stCls}`}>{stLabel}{tn.activeUntil ? ` تا ${formatDateTime(tn.activeUntil, 'fa')}` : ''}</span></div></div>
                     <div className="space-y-2 text-sm text-slate-600 flex-1">
                         <p className="flex justify-between items-center"><span className="text-slate-400">کارت‌های صادرشده:</span> <b>{toPersianNum(st.cardCount || 0)}</b></p>
                         <p className="flex justify-between items-center"><span className="text-slate-400">آخرین صدور:</span> <span className="text-xs">{st.lastIssuedAt ? formatDateTime(st.lastIssuedAt, 'fa') : '—'}</span></p>
@@ -2022,7 +2035,7 @@ function WebhookEditor({ webhooks, onChange, tenantId, sampleData }) {
     </div>);
 }
 
-const INITIAL_WIZARD_DATA = { orgName: '', adminPass: '', publicPass: '', logoUrl: '', welcomeText: 'به سامانه یکپارچه صدور کارت خوش آمدید.', langCode: 'fa', frontBg: '', backBg: '', fields: [], conditions: [], dashboardNameFormat: [], webhooks: [], cardLayout: 'double', showcase3d: false, canvasW: 800, canvasH: 500, canvasMode: 'auto', bgFit: 'stretch', printW: 0, printH: 0, validityDays: 0, isActive: true, activeUntil: '', allowLangSwitch: true, slug: '', theme: { ...DEFAULT_THEME } };
+const INITIAL_WIZARD_DATA = { orgName: '', adminPass: '', publicPass: '', logoUrl: '', logoUrlDark: '', welcomeText: 'به سامانه یکپارچه صدور کارت خوش آمدید.', langCode: 'fa', frontBg: '', backBg: '', fields: [], conditions: [], dashboardNameFormat: [], webhooks: [], cardLayout: 'double', showcase3d: false, canvasW: 800, canvasH: 500, canvasMode: 'auto', bgFit: 'stretch', printW: 0, printH: 0, validityDays: 0, isActive: true, activeUntil: '', allowLangSwitch: true, slug: '', theme: { ...DEFAULT_THEME } };
 const STEPS = [{ title: 'هویت و اتوماسیون' }, { title: 'درگاه ورود' }, { title: 'روی کارت' }, { title: 'پشت کارت' }, { title: 'مدیریت فونت' }, { title: 'شبیه‌ساز درگاه' }, { title: 'شبیه‌ساز فرم' }, { title: 'شبیه‌ساز رندر' }, { title: 'شبیه‌ساز داشبورد' }, { title: 'انتشار نهایی' }];
 
 /** ابعاد واقعی هر روی کارت: حالت ثابت = ابعاد بوم؛ حالت خودکار = ابعاد عکس زمینه (یا ابعاد پیش‌فرض بوم بدون عکس). */
@@ -2354,7 +2367,7 @@ function SuperAdminWizard({ initialData, globalFonts, globalValidations, t, onCo
             removeWizardDraft(data.id); removeWizardDraft(result.id);
             setStepError('');
             if (publish) onComplete(result.id); else notifySuccess('تغییرات ذخیره شد.');
-        } catch (e) { notifyError(e); if (e.field === 'slug') { setStep(1); setStepError(e.message); setTimeout(() => focusField('slug'), 100); } }
+        } catch (e) { notifyError(e); if (e.field === 'slug') { setStep(1); setStepError(e.message); setTimeout(() => focusField('slug'), 100); } else if (e.field === 'logoUrlDark') { setStep(2); setStepError(e.message); setTimeout(() => focusField('logoUrlDark'), 100); } }
         setIsSaving(false);
     };
     const cancel = async () => {
@@ -2432,7 +2445,7 @@ function SuperAdminWizard({ initialData, globalFonts, globalValidations, t, onCo
                             {(step === 3 || step === 4) && selectedFieldId ? (<PropertiesSidebarPanel data={data} setData={setData} selectedFieldId={selectedFieldId} onDelete={() => setSelectedFieldId(null)} onSelect={setSelectedFieldId} dbPresets={dbPresets} globalValidations={globalValidations} />) : (
                                 <><h3 className="font-bold text-xl text-indigo-900 border-b pb-2">{stepTitle(step)}</h3>
                                     {step === 1 && (<div className="space-y-4"><div><label className="text-sm font-bold mb-1 block">زبان پلتفرم</label><select value={data.langCode} onChange={e => setData(p => ({ ...p, langCode: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 outline-none bg-slate-50"><option value="fa">فارسی (Persian)</option><option value="en">English (انگلیسی)</option><option value="ar">العربية (عربی)</option><option value="tr">Türkçe (ترکی)</option></select></div><OutputFormatEditor data={data} setData={setData} dims={sideDims} /><TenantSettingsEditor data={data} setData={setData} /><div><label className="text-sm font-bold mb-1 block">نام سازمان</label><input className="w-full border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={data.orgName} onChange={e => setData(p => ({ ...p, orgName: e.target.value }))} /></div><div id="fieldwrap-slug"><SlugEditor data={data} setData={setData} originalSlug={initialData && initialData.id ? initialData.slug : ''} /></div><div><label className="text-sm font-bold mb-1 block">{t('admin_pass')}</label><input type="password" autoComplete="new-password" placeholder={passPlaceholder('hasAdminPass')} className="w-full border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={data.adminPass} onChange={e => setData(p => ({ ...p, adminPass: e.target.value }))} /></div><div><label className="text-sm font-bold mb-1 block">{t('public_pass')}</label><input type="password" autoComplete="new-password" placeholder={passPlaceholder('hasPublicPass')} className="w-full border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={data.publicPass} onChange={e => setData(p => ({ ...p, publicPass: e.target.value }))} /></div><WebhookEditor webhooks={data.webhooks} onChange={(webhooks) => setData(p => ({ ...p, webhooks }))} tenantId={data.id} sampleData={previewFormData} /></div>)}
-                                    {step === 2 && (<div className="space-y-4"><div><label className="text-sm font-bold mb-1 block">لوگو (آپلود از سیستم یا لینک)</label><div className="flex gap-2"><label className={`bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-4 py-2.5 rounded-xl cursor-pointer flex items-center justify-center shrink-0 ${uploadingLogo ? 'opacity-50 animate-pulse' : ''}`}><Icon name="UploadCloud" /><input type="file" accept="image/*" className="hidden" disabled={uploadingLogo} onChange={async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; setUploadingLogo(true); const url = await uploadImageFile(f, { keepTransparency: true }); setUploadingLogo(false); if (url) setData(p => ({ ...p, logoUrl: url })); }} /></label><input className="w-full border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none text-left" dir="ltr" value={data.logoUrl} onChange={e => setData(p => ({ ...p, logoUrl: e.target.value }))} placeholder="https://..." /></div></div><div><label className="text-sm font-bold mb-1 block">متن خوش‌آمدگویی سامانه</label><textarea className="w-full border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-indigo-500 outline-none h-32" value={data.welcomeText} onChange={e => setData(p => ({ ...p, welcomeText: e.target.value }))} /></div><ThemeEditor data={data} setData={setData} /></div>)}
+                                    {step === 2 && (<div className="space-y-4"><ImageSettingField id="wz-logo" label="لوگو (آپلود از سیستم یا لینک)" hint="تصویر مربع با پس‌زمینه‌ی شفاف (PNG) بهترین نتیجه را دارد. اگر خالی بماند، لوگوی پلتفرم نشان داده می‌شود." value={data.logoUrl || ''} onChange={v => setData(p => ({ ...p, logoUrl: v }))} maxSize={800} clearLabel="حذف لوگو" /><ImageSettingField id="logoUrlDark" dark label="لوگوی حالت تیره (اختیاری)" hint="وقتی کاربر حالت نمایش را «تیره» کند، این لوگو نشان داده می‌شود؛ مثلاً نسخه‌ی سفید لوگو. اگر خالی بماند، در حالت تیره هم همان لوگوی بالا نشان داده می‌شود." value={data.logoUrlDark || ''} onChange={v => setData(p => ({ ...p, logoUrlDark: v }))} fallback={(data.logoUrl || '').trim()} maxSize={800} clearLabel="حذف (استفاده از لوگوی عادی)" /><div><label className="text-sm font-bold mb-1 block">متن خوش‌آمدگویی سامانه</label><textarea className="w-full border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-indigo-500 outline-none h-32" value={data.welcomeText} onChange={e => setData(p => ({ ...p, welcomeText: e.target.value }))} /></div><ThemeEditor data={data} setData={setData} /></div>)}
                                     {(step === 3 || step === 4) && <SideDimsReport data={data} setData={setData} dims={sideDims} />}
                                     {step === 3 && <div className="text-sm text-slate-600 bg-indigo-50 p-4 rounded-xl border border-indigo-100">با استفاده از نوار ابزار در بالا، المان اضافه کنید. روی المان کلیک کنید تا تنظیمات آن باز شود و با ماوس آن را جابجا کنید.</div>}
                                     {step === 4 && <div className="text-sm text-slate-600 bg-indigo-50 p-4 rounded-xl border border-indigo-100">در صورت نیاز به چاپ اطلاعات در پشت کارت، در این قسمت المان‌ها را تنظیم کنید.</div>}
@@ -2620,7 +2633,7 @@ function TenantForm({ tenant, t, lang, langControl, globalValidations, onLogout 
             {cropModal(t)}{myCardsModal}
             <div className="md:w-1/3 glass border-l border-white/60 p-8 flex flex-col items-center text-center z-10 relative">
                 <div className={`absolute top-4 ${isRtl ? 'right-4' : 'left-4'} flex items-center gap-3 text-slate-500`}><button onClick={onLogout} aria-label={t('logout')} title={t('logout')} className="hover:text-red-500"><Icon name="LogOut" className="w-5 h-5" /></button><ThemeToggle t={t} compact /><LanguageSwitcher control={langControl} /></div>
-                <div className="flex-1 flex flex-col items-center justify-center w-full mt-10"><LogoImg src={tenant.logoUrl} alt="" className="w-32 h-32 object-contain mb-6 rounded-2xl shadow-sm" /><h1 className="text-3xl font-bold text-slate-800 mb-4">{tenant.orgName}</h1><p className="text-slate-500 leading-relaxed">{tenant.welcomeText}</p></div>
+                <div className="flex-1 flex flex-col items-center justify-center w-full mt-10"><LogoImg src={tenant.logoUrl} srcDark={tenant.logoUrlDark} alt="" className="w-32 h-32 object-contain mb-6 rounded-2xl shadow-sm" /><h1 className="text-3xl font-bold text-slate-800 mb-4">{tenant.orgName}</h1><p className="text-slate-500 leading-relaxed">{tenant.welcomeText}</p></div>
                 <div className="mt-auto pt-8 border-t border-slate-100 w-full"><BrandingFooter /></div>
             </div>
             <div className="flex-1 p-4 md:p-12 overflow-y-auto">
@@ -2740,7 +2753,7 @@ function TenantDashboard({ tenant, t, lang, langControl, globalValidations, onLo
             {showAudit && <AuditLogModal tenantId={tenant.id} t={t} lang={lang} onClose={() => setShowAudit(false)} />}
             {bulk && <div role="status" aria-live="polite" className="fixed inset-0 z-[80] bg-slate-900/60 flex items-center justify-center p-4"><div className="bg-white rounded-2xl p-6 w-full max-w-sm text-center shadow-2xl"><p className="font-bold text-slate-800 mb-3">{t('export_progress', bulk.done, bulk.total)}</p><div className="h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-600 transition-all" style={{ width: `${(bulk.done / bulk.total) * 100}%` }} /></div></div></div>}
 
-            <header className="max-w-6xl mx-auto w-full glass rounded-2xl p-4 md:p-6 mb-6 flex flex-col sm:flex-row justify-between items-center gap-4"><div className="flex items-center gap-4"><LogoImg src={tenant.logoUrl} alt="" className="w-12 h-12 object-contain bg-slate-50 rounded-lg p-1" /><div><h1 className="text-2xl font-bold text-slate-800">{t('dashboard_title')}</h1><p className="text-sm text-slate-500">{tenant.orgName} — {t('history_subtitle')}</p></div></div><div className="flex flex-wrap gap-2 justify-center items-center"><ThemeToggle t={t} /><LanguageSwitcher control={langControl} className="text-slate-600" /><button onClick={() => exportToCSV(selectedCards.length ? selectedCards : filteredCards, tenant, t)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 px-4 py-2 rounded-xl font-bold"><Icon name="FileSpreadsheet" className="w-4 h-4" /> {t('export_excel')}</button><button onClick={() => setShowAudit(true)} className="flex items-center gap-2 text-slate-600 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="ScrollText" className="w-4 h-4" /> {t('activity_log')}</button><button onClick={() => setShowSettings(true)} className="flex items-center gap-2 text-slate-600 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="Settings" className="w-4 h-4" /> {t('settings')}</button><button onClick={onLogout} className="flex items-center gap-2 text-slate-600 hover:text-red-500 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="LogOut" className="w-4 h-4" /> {t('logout')}</button></div></header>
+            <header className="max-w-6xl mx-auto w-full glass rounded-2xl p-4 md:p-6 mb-6 flex flex-col sm:flex-row justify-between items-center gap-4"><div className="flex items-center gap-4"><LogoImg src={tenant.logoUrl} srcDark={tenant.logoUrlDark} alt="" className="w-12 h-12 object-contain bg-slate-50 rounded-lg p-1" /><div><h1 className="text-2xl font-bold text-slate-800">{t('dashboard_title')}</h1><p className="text-sm text-slate-500">{tenant.orgName} — {t('history_subtitle')}</p></div></div><div className="flex flex-wrap gap-2 justify-center items-center"><ThemeToggle t={t} /><LanguageSwitcher control={langControl} className="text-slate-600" /><button onClick={() => exportToCSV(selectedCards.length ? selectedCards : filteredCards, tenant, t)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 px-4 py-2 rounded-xl font-bold"><Icon name="FileSpreadsheet" className="w-4 h-4" /> {t('export_excel')}</button><button onClick={() => setShowAudit(true)} className="flex items-center gap-2 text-slate-600 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="ScrollText" className="w-4 h-4" /> {t('activity_log')}</button><button onClick={() => setShowSettings(true)} className="flex items-center gap-2 text-slate-600 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="Settings" className="w-4 h-4" /> {t('settings')}</button><button onClick={onLogout} className="flex items-center gap-2 text-slate-600 hover:text-red-500 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="LogOut" className="w-4 h-4" /> {t('logout')}</button></div></header>
             {tenant.closedReason && <div role="alert" className="max-w-6xl mx-auto w-full mb-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-sm font-bold">{tenant.closedReason} {t('admin_view_only')}</div>}
             <div role="tablist" aria-label={t('dashboard_title')} className="view-toggle max-w-6xl mx-auto w-full mb-4 flex"><div className="inline-flex glass rounded-xl p-1">{[['list', 'List', t('card_list')], ['reports', 'ChartColumn', t('reports')]].map(([v, ic, lb]) => <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-slate-600"><Icon name={ic} className="w-4 h-4" /> {lb}</button>)}</div></div>
             {view === 'reports' && <div className="max-w-6xl mx-auto w-full flex-1 mb-8"><ReportsPanel tenant={tenant} cards={cards} loading={loading} t={t} lang={lang} Icon={Icon} formatDate={formatDateTime} /></div>}
@@ -2805,7 +2818,7 @@ function VerifyPage({ code, dicts }) {
                 {!res && !err && <p className="text-slate-500 animate-pulse">{t('loading')}</p>}
                 {err && <div role="alert"><div className="w-20 h-20 mx-auto rounded-full flex items-center justify-center text-red-600 bg-red-100 mb-4"><Icon name="XCircle" className="w-12 h-12" /></div><p className="font-bold text-red-700">{t('verify_not_found')}</p></div>}
                 {res && (<>
-                    {res.logoUrl && <img src={res.logoUrl} alt="" className="w-16 h-16 mx-auto object-contain mb-2" />}
+                    {(res.logoUrl || res.logoUrlDark) && <LogoImg src={res.logoUrl} srcDark={res.logoUrlDark} usePlatform={false} alt="" className="w-16 h-16 mx-auto object-contain mb-2" />}
                     <p className="font-bold text-slate-700 mb-6">{res.orgName}</p>
                     <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-4 ${icon[res.status][1]}`}><Icon name={icon[res.status][0]} className="w-12 h-12" /></div>
                     <p role="status" className="text-2xl font-bold text-slate-800 mb-1">{t(`verify_${res.status}`)}</p>

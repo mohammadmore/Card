@@ -199,7 +199,7 @@ function platform_defaults(): array {
     global $config;
     return [
         'name' => 'پلتفرم یکپارچه صدور کارت',
-        'logoUrl' => '', 'faviconUrl' => '',
+        'logoUrl' => '', 'logoUrlDark' => '', 'faviconUrl' => '',
         'footer' => ['show' => true, 'line1' => 'Powered by Asva Studio', 'line2' => 'توسعه یافته توسط شرکت داده‌پردازان اسوا', 'phone' => '09966697806', 'link' => 'https://t.me/+989966697806'],
         'defaultTheme' => DEFAULT_THEME, 'superTheme' => DEFAULT_THEME,
         'idleMinutes' => 60,
@@ -222,7 +222,7 @@ function platform_settings(PDO $pdo): array {
 }
 /** نسخه‌ی قابل ارسال به مرورگر؛ تنظیمات امنیتی فقط برای سوپرادمین. */
 function platform_public(array $ps, bool $super): array {
-    $pub = array_intersect_key($ps, array_flip(['name', 'logoUrl', 'faviconUrl', 'footer', 'defaultTheme', 'superTheme', 'idleMinutes']));
+    $pub = array_intersect_key($ps, array_flip(['name', 'logoUrl', 'logoUrlDark', 'faviconUrl', 'footer', 'defaultTheme', 'superTheme', 'idleMinutes']));
     if ($super) { $pub['loginMaxAttempts'] = $ps['loginMaxAttempts']; $pub['loginLockMinutes'] = $ps['loginLockMinutes']; }
     return $pub;
 }
@@ -310,7 +310,7 @@ function tenant_client_view(array $t, bool $withWebhooks): array {
     return $t;
 }
 function tenant_public_view(array $t): array {
-    return array_intersect_key($t, array_flip(['id', 'slug', 'orgName', 'logoUrl', 'welcomeText', 'langCode', 'allowLangSwitch'])) + ['closedReason' => tenant_closed_reason($t), 'theme' => sanitize_theme($t['theme'] ?? null)];
+    return array_intersect_key($t, array_flip(['id', 'slug', 'orgName', 'logoUrl', 'logoUrlDark', 'welcomeText', 'langCode', 'allowLangSwitch'])) + ['closedReason' => tenant_closed_reason($t), 'theme' => sanitize_theme($t['theme'] ?? null)];
 }
 /** اعتبارسنجی و اعمال رمزهای جدید روی رکورد سازمان. */
 function apply_passwords(array &$t, string $adminPass, string $publicPass, bool $isNew): void {
@@ -763,7 +763,7 @@ $routes = [
             $new['name'] = trim(preg_replace('/\s+/u', ' ', in_str($input, 'name', 80)));
             if ($new['name'] === '') fail_field('نام پلتفرم نمی‌تواند خالی باشد.', 'name');
         }
-        foreach (['logoUrl' => 'لوگو', 'faviconUrl' => 'آیکون تب'] as $k => $label) {
+        foreach (['logoUrl' => 'لوگو', 'logoUrlDark' => 'لوگوی حالت تیره', 'faviconUrl' => 'آیکون تب'] as $k => $label) {
             if (!array_key_exists($k, $input)) continue;
             $v = trim(in_str($input, $k, 1000));
             if ($v !== '' && !valid_image_url($v)) fail_field("لینک {$label} نامعتبر است. یک فایل آپلود کنید یا لینکی که با https:// شروع می‌شود وارد کنید.", $k);
@@ -855,6 +855,9 @@ $routes = [
         $data['allowLangSwitch'] = ($input['allowLangSwitch'] ?? true) !== false;
         // رنگ‌های گرادیانت پس‌زمینه‌ی پنل این سازمان
         $data['theme'] = sanitize_theme($input['theme'] ?? null);
+        // لوگوی اختیاری برای حالت تیره (خالی = همان لوگوی عادی)
+        $data['logoUrlDark'] = trim(in_str($input, 'logoUrlDark', 1000));
+        if ($data['logoUrlDark'] !== '' && !valid_image_url($data['logoUrlDark'])) fail_field('لینک لوگوی حالت تیره نامعتبر است. یک فایل آپلود کنید یا لینکی که با https:// شروع می‌شود وارد کنید.', 'logoUrlDark');
         // ترتیب فیلدها در فرم (فهرست شناسه‌ی فیلدها؛ خالی = ترتیب طراحی)
         $data['formOrder'] = array_values(array_unique(array_filter(array_map(fn($v) => is_string($v) || is_int($v) ? (string)$v : '', array_slice(in_arr($input, 'formOrder'), 0, 500)), fn($v) => $v !== '' && strlen($v) <= 64 && valid_id($v))));
         // آدرس اختصاصی لینک (خالی = لینک با شناسه‌ی تصادفی)
@@ -1046,7 +1049,7 @@ $routes = [
         $nameIds = (array)($t['dashboardNameFormat'] ?? []);
         if (!$nameIds) { foreach ($t['fields'] ?? [] as $f) { if (($f['type'] ?? '') === 'text') { $nameIds = [$f['id']]; break; } } }
         $owner = trim(implode(' ', array_map(fn($fid) => is_scalar($data[$fid] ?? null) ? (string)$data[$fid] : '', $nameIds)));
-        respond(['status' => card_status($data), 'theme' => sanitize_theme($t['theme'] ?? null), 'orgName' => $t['orgName'] ?? '', 'logoUrl' => $t['logoUrl'] ?? '', 'langCode' => $t['langCode'] ?? 'fa', 'ownerName' => $owner, 'issuedAt' => $data['_issued'] ?? substr((string)$card['issued_at'], 0, 10), 'expiresAt' => $data['_exp'] ?? null]);
+        respond(['status' => card_status($data), 'theme' => sanitize_theme($t['theme'] ?? null), 'orgName' => $t['orgName'] ?? '', 'logoUrl' => $t['logoUrl'] ?? '', 'logoUrlDark' => $t['logoUrlDark'] ?? '', 'langCode' => $t['langCode'] ?? 'fa', 'ownerName' => $owner, 'issuedAt' => $data['_issued'] ?? substr((string)$card['issued_at'], 0, 10), 'expiresAt' => $data['_exp'] ?? null]);
     },
     'GET get_audit_log' => function () use ($pdo) {
         $tenantId = is_string($_GET['tenant_id'] ?? null) ? $_GET['tenant_id'] : '';

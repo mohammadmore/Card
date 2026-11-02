@@ -304,3 +304,9 @@ html.theme-fading, html.theme-fading *, html.theme-fading *::before, html.theme-
   .stack-table td:first-child { font-size: 15px; }
 }
 html.dark .stack-table td[data-label]::before { color: #97a6ba; }
+
+/* --- لوگوی جداگانه برای حالت تیره: هر دو تصویر در صفحه هستند و فقط یکی دیده می‌شود --- */
+html.dark .logo-light, html:not(.dark) .logo-dark { display: none !important; }
+/* پیش‌نمایش لوگوی حالت تیره، در هر دو حالت روی زمینه‌ی تیره */
+.logo-preview-dark { background: #1e293b !important; border-color: #334155 !important; }
+@media print { .logo-dark { display: none !important; } .logo-light { display: revert !important; } }
