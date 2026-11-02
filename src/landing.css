@@ -70,3 +70,48 @@ details.lp-faq[open] .lp-chev { transform: rotate(180deg); }
 
 /* دکمه‌های دموی سه‌بعدی روی پس‌زمینه‌ی صفحه‌ی معرفی */
 .sc-btn { font-family: inherit; }
+
+/* ---------- کارت متحرک بالای صفحه ---------- */
+.lp-hs { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 22px; align-items: center; }
+@media (max-width: 640px) { .lp-hs { grid-template-columns: 1fr; gap: 26px; } }
+.lp-hs-cardwrap { perspective: 1300px; display: flex; flex-direction: column; align-items: center; }
+.lp-hs-card { position: relative; width: min(100%, 360px); aspect-ratio: 1.586; transform-style: preserve-3d; will-change: transform; --pc: #7c3aed; }
+.lp-hs-face { position: absolute; inset: 0; border-radius: 20px; overflow: hidden; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  background: linear-gradient(135deg, var(--pc), color-mix(in srgb, var(--pc) 45%, var(--g2))); box-shadow: 0 30px 60px -25px rgba(30, 27, 75, .5); transition: background .4s; color: #fff; }
+.lp-hs-face::before { content: ''; position: absolute; width: 70%; aspect-ratio: 1; border-radius: 50%; background: rgba(255, 255, 255, .12); inset-inline-end: -22%; top: -38%; }
+.lp-hs-face::after { content: ''; position: absolute; inset-inline: 0; bottom: 0; height: 34%; background: linear-gradient(180deg, transparent, rgba(255, 255, 255, .12)); clip-path: ellipse(80% 60% at 30% 100%); }
+.lp-hs-back { transform: rotateY(180deg); background: linear-gradient(135deg, #1e1b4b, color-mix(in srgb, var(--pc) 60%, #1e1b4b)); display: flex; align-items: center; justify-content: center; gap: 8%; }
+.lp-hs-logo { position: absolute; top: 7%; inset-inline-start: 6%; width: 15%; aspect-ratio: 1; border-radius: 12px; background: rgba(255, 255, 255, .95); display: flex; align-items: center; justify-content: center; padding: 4px; z-index: 1; }
+.lp-hs-logo img, .lp-hs-backlogo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.lp-hs-backlogo { width: 30%; aspect-ratio: 1; border-radius: 18px; background: rgba(255, 255, 255, .95); display: flex; align-items: center; justify-content: center; padding: 8px; position: relative; z-index: 1; }
+.lp-hs-qr { width: 26%; aspect-ratio: 1; border-radius: 14px; background: #fff; color: #1e1b4b; padding: 6px; position: relative; z-index: 1; }
+.lp-hs-photo { position: absolute; inset-inline-end: 6%; top: 18%; width: 27%; aspect-ratio: 4 / 5; border-radius: 14px; background: #fff; padding: 3px; box-shadow: 0 10px 22px -10px rgba(15, 23, 42, .5); z-index: 1; }
+.lp-hs-photo img { width: 100%; height: 100%; object-fit: cover; border-radius: 11px; }
+.lp-hs-sil { display: block; width: 100%; height: 100%; border-radius: 11px; background:
+  radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--pc) 35%, #94a3b8) 0 19%, transparent 20%),
+  radial-gradient(ellipse 46% 36% at 50% 100%, color-mix(in srgb, var(--pc) 35%, #94a3b8) 0 98%, transparent 100%), linear-gradient(#e2e8f0, #cbd5e1); }
+.lp-hs-sil[hidden], .lp-hs-photo img[hidden] { display: none; }
+.lp-hs-rows { position: absolute; inset-inline-start: 6%; bottom: 11%; width: 61%; display: flex; flex-direction: column; gap: 5px; z-index: 1; font-size: clamp(10px, 2.9vw, 13px); }
+.lp-hs-rows div { display: flex; gap: 5px; align-items: baseline; white-space: nowrap; }
+.lp-hs-rows dt { opacity: .75; font-weight: 500; font-size: .8em; flex-shrink: 0; }
+.lp-hs-rows dd { margin: 0; font-weight: 800; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.lp-hs-rows div:first-child dd { font-size: 1.06em; }
+
+/* فرم «رمزآلود و معلق» کنار کارت */
+.lp-hs-form { position: relative; display: flex; flex-direction: column; gap: 12px; }
+.lp-hs-field { animation: lp-hover 5.5s ease-in-out infinite; animation-delay: var(--d); }
+@keyframes lp-hover { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+.lp-hs-label { display: block; font-size: 11px; font-weight: 700; margin-bottom: 4px; color: var(--muted); letter-spacing: .02em; }
+.lp-hs-input { position: relative; min-height: 38px; border-radius: 12px; padding: 8px 12px; font-weight: 700; font-size: 14px; display: flex; align-items: center;
+  background: color-mix(in srgb, var(--card) 70%, transparent); border: 1px solid color-mix(in srgb, var(--g3) 28%, transparent);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .25) inset, 0 10px 28px -16px color-mix(in srgb, var(--g3) 70%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); overflow: hidden; }
+.lp-hs-input::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--g2) 18%, transparent) 50%, transparent 70%); transform: translateX(-100%); animation: lp-scan 3.8s ease-in-out infinite; pointer-events: none; }
+@keyframes lp-scan { 0%, 55% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+.lp-hs-caret { display: none; width: 2px; height: 1.1em; background: var(--g3); margin-inline-start: 2px; animation: lp-blink .8s steps(2) infinite; }
+.lp-hs-typing .lp-hs-caret { display: inline-block; }
+.lp-hs-typing { border-color: color-mix(in srgb, var(--g3) 65%, transparent); }
+@keyframes lp-blink { 50% { opacity: 0; } }
+.lp-hs-btn { margin-top: 4px; border-radius: 12px; padding: 9px 12px; font-weight: 800; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: transform .15s, filter .15s; pointer-events: none; }
+.lp-hs-btn.lp-hs-press { transform: scale(.94); filter: brightness(1.15); box-shadow: 0 0 0 6px color-mix(in srgb, var(--g3) 25%, transparent); }
+.lp-hs-cursor { position: absolute; top: 0; left: 0; opacity: 0; pointer-events: none; z-index: 5; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .3)); }
+.lp-hs-cursor.lp-hs-click path { transform: scale(.85); transform-origin: 4px 2px; }

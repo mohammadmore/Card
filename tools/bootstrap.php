@@ -1,5 +1,8 @@
 <?php
-if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
+// فقط از خط فرمان یا Cron (حتی با php-cgi هاست)؛ از مرورگر قابل اجرا نیست
+if (PHP_SAPI !== 'cli' && (isset($_SERVER['REQUEST_METHOD']) || isset($_SERVER['HTTP_HOST']))) { http_response_code(404); exit; }
+if (!defined('STDERR')) define('STDERR', fopen('php://stderr', 'w'));
+if (!defined('STDOUT')) define('STDOUT', fopen('php://stdout', 'w'));
 
 function tools_config(): array {
     $root = dirname(__DIR__);

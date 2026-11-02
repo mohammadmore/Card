@@ -171,3 +171,29 @@ function landing_default_plans(): array {
             'features' => ['fa' => ['تعداد کارت نامحدود', 'طرح‌های نامحدود', 'آدرس اختصاصی', 'پشتیبانی ویژه'], 'en' => ['Unlimited cards', 'Unlimited designs', 'Custom address', 'Priority support']]],
     ];
 }
+
+/** چهار نفر نمونه‌ی کارت متحرک بالای صفحه‌ی معرفی (از «تنظیمات پلتفرم ← کارت صفحه‌ی اصلی» قابل تغییر). */
+function hero_default_people(): array {
+    return [
+        ['photo' => '', 'color' => '#7c3aed', 'name' => ['fa' => 'سارا محمدی', 'en' => 'Sara Mohammadi'], 'age' => 29, 'role' => ['fa' => 'طراح ارشد محصول', 'en' => 'Senior Product Designer']],
+        ['photo' => '', 'color' => '#0ea5e9', 'name' => ['fa' => 'رضا کریمی', 'en' => 'Reza Karimi'], 'age' => 47, 'role' => ['fa' => 'مدیر فنی', 'en' => 'Technical Director']],
+        ['photo' => '', 'color' => '#10b981', 'name' => ['fa' => 'مریم احمدی', 'en' => 'Maryam Ahmadi'], 'age' => 36, 'role' => ['fa' => 'پزشک متخصص', 'en' => 'Medical Specialist']],
+        ['photo' => '', 'color' => '#f43f5e', 'name' => ['fa' => 'علی رضایی', 'en' => 'Ali Rezaei'], 'age' => 61, 'role' => ['fa' => 'استاد دانشگاه', 'en' => 'University Professor']],
+    ];
+}
+/** ادغام مقادیر ذخیره‌شده با پیش‌فرض‌ها و پاک‌سازی (هم در api و هم در landing.php). */
+function hero_people_merge($saved, ?callable $validImage = null): array {
+    $def = hero_default_people(); $saved = is_array($saved) ? array_values($saved) : [];
+    $txt = fn($v, $max) => is_scalar($v) ? mb_substr(trim((string)$v), 0, $max) : '';
+    $out = [];
+    foreach ($def as $i => $d) {
+        $s = is_array($saved[$i] ?? null) ? $saved[$i] : [];
+        $photo = $txt($s['photo'] ?? '', 500);
+        if ($photo !== '' && $validImage && !$validImage($photo)) $photo = '';
+        $color = preg_match('/^#[0-9a-fA-F]{6}$/', (string)($s['color'] ?? '')) ? $s['color'] : $d['color'];
+        $loc = function ($k, $max) use ($s, $d, $txt) { $v = is_array($s[$k] ?? null) ? $s[$k] : []; return ['fa' => $txt($v['fa'] ?? $d[$k]['fa'], $max), 'en' => $txt($v['en'] ?? $d[$k]['en'], $max)]; };
+        $age = isset($s['age']) && is_numeric($s['age']) ? max(0, min(120, (int)$s['age'])) : $d['age'];
+        $out[] = ['photo' => $photo, 'color' => $color, 'name' => $loc('name', 60), 'age' => $age, 'role' => $loc('role', 60)];
+    }
+    return $out;
+}

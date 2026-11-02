@@ -628,6 +628,16 @@ function commerce_routes(PDO $pdo, array $input, array $config): array {
         },
 
         // ---------- سوپرادمین ----------
+        // کارت متحرک بالای صفحه‌ی معرفی: چهار نفر نمونه (عکس، رنگ، نام، سن، سمت)
+        'GET hero_settings' => function () use ($pdo) { require_super(); respond(['people' => hero_people_merge(json_decode(get_setting($pdo, 'hero_cards'), true), 'valid_image_url')]); },
+        'POST save_hero' => function () use ($pdo, $input) {
+            require_super();
+            $in = array_values(in_arr($input, 'people'));
+            foreach ($in as $i => $p) { $ph = is_array($p) ? trim((string)($p['photo'] ?? '')) : ''; if ($ph !== '' && !valid_image_url($ph)) fail_field('عکس نفر ' . ($i + 1) . ' معتبر نیست. دوباره آپلود کنید.', "hero.$i.photo"); }
+            $people = hero_people_merge($in, 'valid_image_url');
+            set_setting($pdo, 'hero_cards', json_enc($people)); audit($pdo, '', 'hero_saved');
+            respond(['success' => true, 'people' => $people]);
+        },
         'GET sales_counts' => function () use ($pdo) {
             require_super(); ensure_aux_schema($pdo);
             respond(['newLeads' => (int)$pdo->query("SELECT COUNT(*) FROM leads WHERE status = 'new'")->fetchColumn(), 'paidOrders' => (int)$pdo->query("SELECT COUNT(*) FROM orders WHERE status = 'paid'")->fetchColumn()]);

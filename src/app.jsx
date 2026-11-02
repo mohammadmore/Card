@@ -1898,6 +1898,9 @@ function PlatformSettingsModal({ onClose }) {
     useEscape(onClose);
     const current = usePlatform();
     const [tab, setTab] = useState('identity');
+    const [hero, setHero] = useState(null); const [heroDirty, setHeroDirty] = useState(false);
+    useEffect(() => { if (tab === 'hero' && !hero) apiGet('hero_settings').then(r => setHero(r.people)).catch(notifyError); }, [tab]);
+    const setPerson = (i, patch) => { setHero(h => h.map((p, j) => j === i ? { ...p, ...patch } : p)); setHeroDirty(true); setErrors(e => ({ ...e, [`hero.${i}.photo`]: undefined })); };
     const [d, setD] = useState(() => ({ ...current, footer: { ...current.footer } }));
     const [errors, setErrors] = useState({}); const [saving, setSaving] = useState(false);
     const set = (k, v) => { setD(p => ({ ...p, [k]: v })); setErrors(e => ({ ...e, [k]: undefined })); };
@@ -1906,7 +1909,11 @@ function PlatformSettingsModal({ onClose }) {
     const save = async () => {
         setSaving(true); setErrors({});
         const payload = { name: d.name, logoUrl: d.logoUrl.trim(), logoUrlDark: (d.logoUrlDark || '').trim(), faviconUrl: d.faviconUrl.trim(), footer: d.footer, defaultTheme: d.defaultTheme, superTheme: d.superTheme, idleMinutes: Number(d.idleMinutes), loginMaxAttempts: Number(d.loginMaxAttempts), loginLockMinutes: Number(d.loginLockMinutes) };
-        try { const r = await apiPost('save_platform_settings', payload); setPlatform(r.platform); notifySuccess('تنظیمات پلتفرم ذخیره شد.'); onClose(); }
+        try {
+            const r = await apiPost('save_platform_settings', payload); setPlatform(r.platform);
+            if (hero && heroDirty) { try { await apiPost('save_hero', { people: hero }); } catch (e) { if (e.field) { setErrors({ [e.field]: e.message }); setTab('hero'); } throw e; } }
+            notifySuccess('تنظیمات پلتفرم ذخیره شد.'); onClose();
+        }
         catch (e) {
             if (e.field) { setErrors({ [e.field]: e.message }); setTab(['idleMinutes', 'loginMaxAttempts', 'loginLockMinutes'].includes(e.field) ? 'security' : 'identity'); }
             else notifyError(e);
@@ -1933,7 +1940,7 @@ function PlatformSettingsModal({ onClose }) {
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
             <div role="dialog" aria-modal="true" aria-label="تنظیمات پلتفرم" className="glass-strong rounded-3xl p-5 sm:p-6 w-full max-w-2xl my-8 sm:my-auto">
                 <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Icon name="Settings" className="w-5 h-5" /> تنظیمات پلتفرم</h3><button onClick={onClose} aria-label="بستن" className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full"><Icon name="X" className="w-4 h-4" /></button></div>
-                <div role="tablist" aria-label="بخش‌های تنظیمات" className="view-toggle flex bg-slate-100/80 rounded-xl p-1 mb-5">{tabBtn('identity', 'Palette', 'هویت و ظاهر')}{tabBtn('security', 'ShieldCheck', 'امنیت')}</div>
+                <div role="tablist" aria-label="بخش‌های تنظیمات" className="view-toggle flex bg-slate-100/80 rounded-xl p-1 mb-5">{tabBtn('identity', 'Palette', 'هویت و ظاهر')}{tabBtn('security', 'ShieldCheck', 'امنیت')}{tabBtn('hero', 'IdCard', 'کارت صفحه‌ی اصلی')}</div>
 
                 {tab === 'identity' && <div className="space-y-5" role="tabpanel">
                     <div>{text('name', 'نام پلتفرم', { maxLength: 80 })}<p className="text-[11px] text-slate-500 mt-1">در عنوان تب مرورگر، صفحه ورود سوپرادمین و سربرگ پنل نمایش داده می‌شود.</p></div>
@@ -1956,6 +1963,22 @@ function PlatformSettingsModal({ onClose }) {
                     </div>
                 </div>}
 
+                {tab === 'hero' && <div className="space-y-4" role="tabpanel">
+                    <p className="text-sm text-slate-600 leading-7">کارت متحرک بالای صفحه‌ی معرفی به‌ترتیب این چهار نفر را نشان می‌دهد: فیلدها کنار کارت پر می‌شوند، روی «صدور آنی کارت» کلیک می‌شود و کارت پس از سه دور چرخش سریع با رنگ، عکس و اطلاعات نفر بعد ظاهر می‌شود. لوگوی روی کارت، همان لوگوی پلتفرم (تب «هویت و ظاهر») است.</p>
+                    {!hero ? <p className="text-center text-slate-500 py-6">در حال بارگذاری…</p> : hero.map((p, i) => (
+                        <div key={i} className="bg-white/60 border rounded-2xl p-4 space-y-3" style={{ borderInlineStartWidth: 6, borderInlineStartColor: p.color }}>
+                            <div className="flex items-center gap-2"><b className="text-slate-800 me-auto">نفر {toPersianNum(i + 1)}</b><label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">رنگ کارت<input type="color" value={p.color} onChange={e => setPerson(i, { color: e.target.value })} className="w-9 h-7 rounded border cursor-pointer" aria-label={`رنگ کارت نفر ${i + 1}`} /></label></div>
+                            <ImageSettingField id={`hero-photo-${i}`} label="عکس" hint="عکس پرسنلی (چهره و شانه)، ترجیحاً عمودی. اگر خالی بماند، یک تصویر خنثی نشان داده می‌شود." value={p.photo || ''} onChange={v => setPerson(i, { photo: v })} error={errors[`hero.${i}.photo`]} maxSize={700} previewClass="w-16 h-20" clearLabel="حذف عکس" />
+                            <div className="grid sm:grid-cols-2 gap-3">
+                                <div><label className="text-xs font-bold text-slate-600 block mb-1" htmlFor={`hero-nf-${i}`}>نام و نام خانوادگی</label><input id={`hero-nf-${i}`} value={p.name.fa} maxLength={60} onChange={e => setPerson(i, { name: { ...p.name, fa: e.target.value } })} className="w-full border rounded-xl px-3 py-2 text-sm bg-white/80" /></div>
+                                <div><label className="text-xs font-bold text-slate-600 block mb-1" htmlFor={`hero-ne-${i}`}>Full name (English)</label><input id={`hero-ne-${i}`} dir="ltr" value={p.name.en} maxLength={60} onChange={e => setPerson(i, { name: { ...p.name, en: e.target.value } })} className="w-full border rounded-xl px-3 py-2 text-sm bg-white/80 text-left" /></div>
+                                <div><label className="text-xs font-bold text-slate-600 block mb-1" htmlFor={`hero-rf-${i}`}>سمت</label><input id={`hero-rf-${i}`} value={p.role.fa} maxLength={60} onChange={e => setPerson(i, { role: { ...p.role, fa: e.target.value } })} className="w-full border rounded-xl px-3 py-2 text-sm bg-white/80" /></div>
+                                <div><label className="text-xs font-bold text-slate-600 block mb-1" htmlFor={`hero-re-${i}`}>Position (English)</label><input id={`hero-re-${i}`} dir="ltr" value={p.role.en} maxLength={60} onChange={e => setPerson(i, { role: { ...p.role, en: e.target.value } })} className="w-full border rounded-xl px-3 py-2 text-sm bg-white/80 text-left" /></div>
+                                <div><label className="text-xs font-bold text-slate-600 block mb-1" htmlFor={`hero-age-${i}`}>سن</label><input id={`hero-age-${i}`} type="number" min="0" max="120" dir="ltr" value={p.age} onChange={e => setPerson(i, { age: Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0)) })} className="w-24 border rounded-xl px-3 py-2 text-sm bg-white/80 text-center" /></div>
+                            </div>
+                        </div>
+                    ))}
+                </div>}
                 {tab === 'security' && <div className="space-y-5" role="tabpanel">
                     <SuperPasswordForm />
                     <div className="space-y-4 bg-white/50 border border-white/70 rounded-xl p-4">

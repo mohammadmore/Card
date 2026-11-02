@@ -25,7 +25,7 @@ try {
     $db = $config['db'] ?? null;
     if ($db) {
         $pdo = new PDO("mysql:host={$db['host']};dbname={$db['name']};charset=utf8mb4", $db['user'], $db['pass'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
-        $settings = $pdo->query("SELECT k, v FROM platform_settings WHERE k IN ('platform', 'logoUrl', 'landing', 'plans')")->fetchAll(PDO::FETCH_KEY_PAIR);
+        $settings = $pdo->query("SELECT k, v FROM platform_settings WHERE k IN ('platform', 'logoUrl', 'landing', 'plans', 'hero_cards')")->fetchAll(PDO::FETCH_KEY_PAIR);
     }
 } catch (Throwable $e) { error_log('[landing] ' . $e->getMessage()); }
 require __DIR__ . '/landing_defaults.php';
@@ -42,6 +42,7 @@ $def = landing_default_content(); $saved = json_decode($settings['landing'] ?? '
 $L = $def;
 foreach (['fa', 'en', 'common'] as $part) if (is_array($saved[$part] ?? null)) foreach ($def[$part] as $k => $v) if (array_key_exists($k, $saved[$part])) $L[$part][$k] = $saved[$part][$k];
 $common = $L['common'];
+$heroPeople = hero_people_merge(json_decode($settings['hero_cards'] ?? '', true));
 $plans = isset($settings['plans']) ? (json_decode($settings['plans'], true) ?: []) : landing_default_plans();
 $plans = array_values(array_filter($plans, fn($p) => is_array($p) && ($p['active'] ?? true) !== false));
 
@@ -194,20 +195,34 @@ $jsonLd = [
           <?php if ($common['demoEnabled']): ?><a href="#demo" class="lp-btn-ghost rounded-2xl px-6 py-3.5 font-bold inline-flex items-center gap-2"><?= $ic('wand', 'w-5 h-5') ?> <?= h($C['ctaSecondary']) ?></a><?php endif; ?>
         </div>
       </div>
-      <div class="lp-hero-stage flex flex-col items-center" aria-hidden="true">
-        <div class="lp-hero-card">
-          <div class="lp-hero-front"><span class="lp-shine"></span>
-            <div class="absolute inset-0 p-[7%] flex flex-col text-white">
-              <div class="flex items-center gap-2"><span class="w-8 h-8 rounded-lg bg-white/90 inline-flex items-center justify-center text-[var(--g3)]"><?= $ic('building', 'w-5 h-5') ?></span><span class="font-extrabold text-sm"><?= h($UI['sample_org']) ?></span></div>
-              <div class="mt-auto flex items-end gap-4">
-                <div class="w-[24%] aspect-[4/5] rounded-xl bg-white/85 flex items-end justify-center overflow-hidden"><span class="w-[70%] aspect-square rounded-full bg-slate-300 translate-y-[35%]"></span></div>
-                <div class="flex-1 space-y-2 pb-1"><div class="h-3.5 w-3/4 rounded-full bg-white/90"></div><div class="h-2.5 w-1/2 rounded-full bg-white/60"></div><div class="h-2 w-2/5 rounded-full bg-white/40"></div></div>
-              </div>
+      <?php
+        $heroData = array_map(fn($p) => ['photo' => $imgUrl($p['photo']), 'color' => $p['color'], 'name' => $p['name'][$lang] ?: $p['name']['fa'], 'age' => $num((string)$p['age']), 'role' => $p['role'][$lang] ?: $p['role']['fa']], $heroPeople);
+        $hl = $lang === 'fa' ? ['name' => 'نام و نام خانوادگی', 'age' => 'سن', 'role' => 'سمت', 'btn' => 'صدور آنی کارت'] : ['name' => 'Full name', 'age' => 'Age', 'role' => 'Position', 'btn' => 'Issue card instantly'];
+        $first = $heroData[count($heroData) - 1];
+      ?>
+      <div class="lp-hs" id="lp-hero" aria-hidden="true" data-people="<?= h(json_encode($heroData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>">
+        <div class="lp-hs-cardwrap">
+          <div class="lp-hs-card" style="--pc: <?= h($first['color']) ?>">
+            <div class="lp-hs-face lp-hs-front"><span class="lp-shine"></span>
+              <div class="lp-hs-logo"><img src="<?= h($logoSrc) ?>" alt=""></div>
+              <div class="lp-hs-photo"><img data-k="photo" src="<?= h($first['photo']) ?>" alt=""<?= $first['photo'] === '' ? ' hidden' : '' ?>><span class="lp-hs-sil"<?= $first['photo'] !== '' ? ' hidden' : '' ?>></span></div>
+              <dl class="lp-hs-rows">
+                <div><dt><?= h($hl['name']) ?>:</dt><dd data-k="name"><?= h($first['name']) ?></dd></div>
+                <div><dt><?= h($hl['age']) ?>:</dt><dd data-k="age"><?= h($first['age']) ?></dd></div>
+                <div><dt><?= h($hl['role']) ?>:</dt><dd data-k="role"><?= h($first['role']) ?></dd></div>
+              </dl>
             </div>
+            <div class="lp-hs-face lp-hs-back"><span class="lp-shine"></span><div class="lp-hs-backlogo"><img src="<?= h($logoSrc) ?>" alt=""></div><span class="lp-hs-qr"><?= $ic('qr', 'w-full h-full') ?></span></div>
           </div>
-          <div class="lp-hero-back"><div class="absolute inset-0 flex items-center justify-center"><span class="w-1/3 aspect-square rounded-2xl bg-white/90 text-[#1e1b4b] inline-flex items-center justify-center"><?= $ic('qr', 'w-3/4 h-3/4') ?></span></div></div>
+          <div class="lp-hero-shadow"></div>
         </div>
-        <div class="lp-hero-shadow"></div>
+        <div class="lp-hs-form">
+          <?php foreach (['name', 'age', 'role'] as $i => $k): ?>
+            <div class="lp-hs-field" style="--d: <?= $i * 0.7 ?>s"><span class="lp-hs-label"><?= h($hl[$k]) ?></span><div class="lp-hs-input" data-f="<?= $k ?>"><span class="lp-hs-text"></span><i class="lp-hs-caret"></i></div></div>
+          <?php endforeach; ?>
+          <button type="button" class="lp-hs-btn lp-btn" tabindex="-1"><?= $ic('sparkles', 'w-4 h-4') ?> <?= h($hl['btn']) ?></button>
+          <svg class="lp-hs-cursor" viewBox="0 0 24 24" width="26" height="26"><path d="M4 2l15 11-6.6 1.2L16 21l-3 1.4-3.5-6.9L4 19z" fill="#fff" stroke="#0f172a" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        </div>
       </div>
     </div>
   </section>
@@ -387,6 +402,78 @@ $jsonLd = [
   if ('IntersectionObserver' in window) { var io = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('lp-in'); io.unobserve(e.target); } }); }, { rootMargin: '0px 0px -8% 0px' }); els.forEach(function (el) { io.observe(el); }); }
   else els.forEach(function (el) { el.classList.add('lp-in'); });
   document.querySelectorAll('details:not(.lp-faq) a').forEach(function (a) { a.addEventListener('click', function () { var d = a.closest('details'); if (d) d.open = false; }); });
+
+  // کارت متحرک بالای صفحه: پر شدن فیلدها، کلیک روی «صدور آنی کارت»، سه دور چرخش سریع و نمایش نفر بعد
+  (function () {
+    var root = document.getElementById('lp-hero'); if (!root) return;
+    var people = []; try { people = JSON.parse(root.getAttribute('data-people')) || []; } catch (e) {}
+    if (!people.length) return;
+    var card = root.querySelector('.lp-hs-card'), btn = root.querySelector('.lp-hs-btn'), cursor = root.querySelector('.lp-hs-cursor'), form = root.querySelector('.lp-hs-form');
+    var inputs = {}; root.querySelectorAll('.lp-hs-input').forEach(function (el) { inputs[el.getAttribute('data-f')] = el; });
+    var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var setCard = function (p) {
+      card.style.setProperty('--pc', p.color);
+      root.querySelector('[data-k=name]').textContent = p.name; root.querySelector('[data-k=age]').textContent = p.age; root.querySelector('[data-k=role]').textContent = p.role;
+      var img = root.querySelector('img[data-k=photo]'), sil = root.querySelector('.lp-hs-sil');
+      if (p.photo) { img.src = p.photo; img.hidden = false; sil.hidden = true; } else { img.hidden = true; sil.hidden = false; }
+    };
+    people.forEach(function (p) { if (p.photo) { var im = new Image(); im.src = p.photo; } }); // پیش‌بارگذاری عکس‌ها
+    if (reduce) { setCard(people[0]); Object.keys(inputs).forEach(function (k) { inputs[k].querySelector('.lp-hs-text').textContent = people[0][k]; }); return; }
+
+    // چرخش: نوسان آرام + چرخش سریع سه‌دوره
+    var angle = 0, shown = 0, t0 = performance.now(), spin = null, running = true, raf = 0;
+    var frame = function (now) {
+      raf = 0; if (!running) return;
+      var sway = Math.sin((now - t0) / 1600) * 24;
+      if (spin) {
+        var k = Math.min(1, (now - spin.start) / spin.dur), e = k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+        angle = spin.from + (spin.to - spin.from) * e;
+        if (!spin.swapped && k > .55) { spin.swapped = true; spin.onSwap(); }
+        if (k >= 1) { var done = spin.onDone; spin = null; t0 = now; angle = 0; done(); }
+        card.style.transform = 'rotateX(6deg) rotateY(' + angle + 'deg)';
+      } else { shown = angle + sway; card.style.transform = 'rotateX(6deg) rotateY(' + shown + 'deg)'; }
+      raf = requestAnimationFrame(frame);
+    };
+    var kick = function () { if (!raf && running) raf = requestAnimationFrame(frame); };
+    var wait = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+    var until = function () { return new Promise(function (r) { (function chk() { if (running) r(); else setTimeout(chk, 300); })(); }); };
+    var type = function (k, text) {
+      var el = inputs[k], out = el.querySelector('.lp-hs-text'); el.classList.add('lp-hs-typing'); out.textContent = '';
+      var chars = Array.from(String(text)), i = 0;
+      return new Promise(function (r) { (function step() { if (i >= chars.length) { el.classList.remove('lp-hs-typing'); return r(); } out.textContent += chars[i++]; setTimeout(step, 55 + Math.random() * 60); })(); });
+    };
+    var moveCursor = function () {
+      var fr = form.getBoundingClientRect(), br = btn.getBoundingClientRect();
+      cursor.style.transition = 'none'; cursor.style.opacity = '0';
+      cursor.style.transform = 'translate(' + (fr.width * .2) + 'px,' + (fr.height + 30) + 'px)';
+      void cursor.offsetWidth;
+      cursor.style.transition = 'transform 1s cubic-bezier(.3,.8,.3,1), opacity .3s';
+      cursor.style.opacity = '1';
+      cursor.style.transform = 'translate(' + (br.left - fr.left + br.width * .55) + 'px,' + (br.top - fr.top + br.height * .45) + 'px)';
+      return wait(1100);
+    };
+    var idx = 0;
+    var cycle = async function () {
+      for (;;) {
+        await until();
+        var p = people[idx];
+        Object.keys(inputs).forEach(function (k) { inputs[k].querySelector('.lp-hs-text').textContent = ''; });
+        await wait(500);
+        await type('name', p.name); await wait(250); await type('age', p.age); await wait(250); await type('role', p.role); await wait(400);
+        await moveCursor();
+        btn.classList.add('lp-hs-press'); cursor.classList.add('lp-hs-click'); await wait(180); btn.classList.remove('lp-hs-press'); cursor.classList.remove('lp-hs-click');
+        await new Promise(function (r) { spin = { from: shown, to: 1080, start: performance.now(), dur: 1700, swapped: false, onSwap: function () { setCard(p); }, onDone: r }; kick(); });
+        cursor.style.opacity = '0';
+        await wait(3200);
+        idx = (idx + 1) % people.length;
+      }
+    };
+    // وقتی دیده نمی‌شود یا تب پنهان است، متوقف می‌شود
+    var vis = true, setRun = function () { running = vis && !document.hidden; if (running) kick(); };
+    if ('IntersectionObserver' in window) new IntersectionObserver(function (es) { vis = es[0].isIntersecting; setRun(); }).observe(root);
+    document.addEventListener('visibilitychange', setRun);
+    kick(); setTimeout(cycle, 700);
+  })();
 
   // فرم درخواست مشاوره
   var lead = document.getElementById('lp-lead');
