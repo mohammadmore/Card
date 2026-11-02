@@ -31,7 +31,7 @@ const ctx = {}; vm.createContext(ctx);
 vm.runInContext(readFileSync('src/vendor/lucide.full.min.js', 'utf8'), ctx);
 const all = ctx.lucide.icons;
 const source = readdirSync('src').filter(f => /\.(jsx?|mjs)$/.test(f)).map(f => readFileSync(`src/${f}`, 'utf8')).join('\n');
-const names = new Set([...source.matchAll(/['"`]([A-Z][A-Za-z0-9]+)['"`]/g)].map(m => m[1]));
+const names = new Set([...source.matchAll(/['"`]([A-Z][A-Za-z0-9]*)['"`]/g)].map(m => m[1])); // حتی نام‌های تک‌حرفی مثل X
 names.add('CloudUpload'); // جایگزین UploadCloud در نسخه‌های جدید Lucide
 const icons = {};
 for (const n of names) { const key = all[n] ? n : all[n[0].toLowerCase() + n.slice(1)] ? n[0].toLowerCase() + n.slice(1) : null; if (key) icons[key] = all[key]; }

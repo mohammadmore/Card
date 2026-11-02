@@ -605,12 +605,14 @@ function BrandingFooter({ preview }) {
     if (!f.show || !(f.line1 || f.line2 || f.phone)) return null;
     const phone = f.phone && (<><Icon name="Phone" className="w-3.5 h-3.5" /><span dir="ltr" className="text-sm">{f.phone}</span></>);
     return (
-        <div className="mt-8 text-center text-slate-400 text-xs pb-4 print:hidden flex flex-col items-center justify-center w-full">
-            {f.line1 && <span className="font-medium tracking-wider opacity-80 mb-1" dir="auto">{f.line1}</span>}
-            {f.line2 && <span className="font-bold opacity-80 text-slate-500" dir="auto">{f.line2}</span>}
-            {phone && (f.link
-                ? <a href={f.link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 hover:text-indigo-500 transition-colors opacity-80 hover:opacity-100 mt-2">{phone}</a>
-                : <span className="flex items-center gap-1.5 opacity-80 mt-2">{phone}</span>)}
+        <div className="mt-8 pb-4 print:hidden flex justify-center w-full">
+            <div className="branding-footer glass rounded-2xl px-5 py-3 text-center text-xs text-slate-600 flex flex-col items-center max-w-full">
+                {f.line1 && <span className="font-medium tracking-wider text-slate-500 mb-1" dir="auto">{f.line1}</span>}
+                {f.line2 && <span className="font-bold text-slate-700" dir="auto">{f.line2}</span>}
+                {phone && (f.link
+                    ? <a href={f.link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-slate-600 hover:text-indigo-600 transition-colors mt-2">{phone}</a>
+                    : <span className="flex items-center gap-1.5 text-slate-600 mt-2">{phone}</span>)}
+            </div>
         </div>
     );
 }
@@ -2506,8 +2508,8 @@ const StatusBadge = ({ status, t }) => <span className={`inline-block px-3 py-1 
 function LanguageSwitcher({ control, className = '' }) {
     if (!control || control.options.length < 2) return null;
     return (
-        <label className={`inline-flex items-center gap-1.5 text-xs ${className}`}><Icon name="Languages" className="w-4 h-4" /><span className="sr-only">Language</span>
-            <select value={control.value} onChange={e => control.onChange(e.target.value)} className="bg-transparent border border-current/20 rounded-lg px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-indigo-500" aria-label="Language / زبان">
+        <label className={`inline-flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 border rounded-xl ps-2.5 pe-1 py-1 text-slate-700 font-bold text-sm cursor-pointer focus-within:ring-2 focus-within:ring-indigo-500 ${className}`}><Icon name="Languages" className="w-4 h-4 text-indigo-600 shrink-0" /><span className="sr-only">Language</span>
+            <select value={control.value} onChange={e => control.onChange(e.target.value)} className="w-auto bg-transparent text-slate-700 font-bold text-sm py-1 pe-1 outline-none cursor-pointer" aria-label="Language / زبان">
                 {control.options.map(o => <option key={o.code} value={o.code} className="text-slate-800">{o.name}</option>)}
             </select>
         </label>
@@ -2753,7 +2755,7 @@ function TenantDashboard({ tenant, t, lang, langControl, globalValidations, onLo
             {showAudit && <AuditLogModal tenantId={tenant.id} t={t} lang={lang} onClose={() => setShowAudit(false)} />}
             {bulk && <div role="status" aria-live="polite" className="fixed inset-0 z-[80] bg-slate-900/60 flex items-center justify-center p-4"><div className="bg-white rounded-2xl p-6 w-full max-w-sm text-center shadow-2xl"><p className="font-bold text-slate-800 mb-3">{t('export_progress', bulk.done, bulk.total)}</p><div className="h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-600 transition-all" style={{ width: `${(bulk.done / bulk.total) * 100}%` }} /></div></div></div>}
 
-            <header className="max-w-6xl mx-auto w-full glass rounded-2xl p-4 md:p-6 mb-6 flex flex-col sm:flex-row justify-between items-center gap-4"><div className="flex items-center gap-4"><LogoImg src={tenant.logoUrl} srcDark={tenant.logoUrlDark} alt="" className="w-12 h-12 object-contain bg-slate-50 rounded-lg p-1" /><div><h1 className="text-2xl font-bold text-slate-800">{t('dashboard_title')}</h1><p className="text-sm text-slate-500">{tenant.orgName} — {t('history_subtitle')}</p></div></div><div className="flex flex-wrap gap-2 justify-center items-center"><ThemeToggle t={t} /><LanguageSwitcher control={langControl} className="text-slate-600" /><button onClick={() => exportToCSV(selectedCards.length ? selectedCards : filteredCards, tenant, t)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 px-4 py-2 rounded-xl font-bold"><Icon name="FileSpreadsheet" className="w-4 h-4" /> {t('export_excel')}</button><button onClick={() => setShowAudit(true)} className="flex items-center gap-2 text-slate-600 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="ScrollText" className="w-4 h-4" /> {t('activity_log')}</button><button onClick={() => setShowSettings(true)} className="flex items-center gap-2 text-slate-600 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="Settings" className="w-4 h-4" /> {t('settings')}</button><button onClick={onLogout} className="flex items-center gap-2 text-slate-600 hover:text-red-500 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="LogOut" className="w-4 h-4" /> {t('logout')}</button></div></header>
+            <header className="max-w-6xl mx-auto w-full glass rounded-2xl p-4 md:p-6 mb-6 flex flex-col sm:flex-row justify-between items-center gap-4"><div className="flex items-center gap-4"><LogoImg src={tenant.logoUrl} srcDark={tenant.logoUrlDark} alt="" className="w-12 h-12 object-contain bg-slate-50 rounded-lg p-1" /><div><h1 className="text-2xl font-bold text-slate-800">{t('dashboard_title')}</h1><p className="text-sm text-slate-500">{tenant.orgName} — {t('history_subtitle')}</p></div></div><div className="flex flex-wrap gap-2 justify-center items-center"><ThemeToggle t={t} /><LanguageSwitcher control={langControl} /><button onClick={() => exportToCSV(selectedCards.length ? selectedCards : filteredCards, tenant, t)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 px-4 py-2 rounded-xl font-bold"><Icon name="FileSpreadsheet" className="w-4 h-4" /> {t('export_excel')}</button><button onClick={() => setShowAudit(true)} className="flex items-center gap-2 text-slate-600 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="ScrollText" className="w-4 h-4" /> {t('activity_log')}</button><button onClick={() => setShowSettings(true)} className="flex items-center gap-2 text-slate-600 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="Settings" className="w-4 h-4" /> {t('settings')}</button><button onClick={onLogout} className="flex items-center gap-2 text-slate-600 hover:text-red-500 bg-slate-100 px-4 py-2 rounded-xl font-bold"><Icon name="LogOut" className="w-4 h-4" /> {t('logout')}</button></div></header>
             {tenant.closedReason && <div role="alert" className="max-w-6xl mx-auto w-full mb-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-sm font-bold">{tenant.closedReason} {t('admin_view_only')}</div>}
             <div role="tablist" aria-label={t('dashboard_title')} className="view-toggle max-w-6xl mx-auto w-full mb-4 flex"><div className="inline-flex glass rounded-xl p-1">{[['list', 'List', t('card_list')], ['reports', 'ChartColumn', t('reports')]].map(([v, ic, lb]) => <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-slate-600"><Icon name={ic} className="w-4 h-4" /> {lb}</button>)}</div></div>
             {view === 'reports' && <div className="max-w-6xl mx-auto w-full flex-1 mb-8"><ReportsPanel tenant={tenant} cards={cards} loading={loading} t={t} lang={lang} Icon={Icon} formatDate={formatDateTime} /></div>}
