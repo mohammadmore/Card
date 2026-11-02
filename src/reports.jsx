@@ -21,7 +21,8 @@ const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'
 const DAY_MS = 86400000;
 
 /** فیلدهایی که می‌توانند «متغیر گزارش» باشند. */
-export const reportableFields = (tenant) => (tenant.fields || []).filter(f => f.type === 'select' || f.type === 'text');
+// فقط فیلدهای انتخابی: آمار فیلدهای متنی آزاد (نام، کد ملی و…) معنایی ندارد. ترتیب = ترتیب فرم (formFields از والد).
+export const reportableFields = (tenant, formFields) => (formFields || tenant.fields || []).filter(f => f.type === 'select');
 
 // --- تاریخ: همه‌ی محاسبات روی روزهای تقویمی (UTC) تا منطقه‌ی زمانی مرورگر اثری نداشته باشد ---
 const dayNum = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / DAY_MS : null; };
@@ -226,9 +227,9 @@ function VariableCard({ field, rows, total, fmt, pct, selectedKey, onPick, t, Ic
 
 // ==========================================
 
-export function ReportsPanel({ tenant, cards, loading, t, lang, Icon, formatDate }) {
-    const fields = useMemo(() => reportableFields(tenant), [tenant]);
-    const [vars, setVars] = useState(() => { const sel = fields.filter(f => f.type === 'select').map(f => f.id); return sel.length ? sel : fields.slice(0, 1).map(f => f.id); });
+export function ReportsPanel({ tenant, formFields, cards, loading, t, lang, Icon, formatDate }) {
+    const fields = useMemo(() => reportableFields(tenant, formFields), [tenant, formFields]);
+    const [vars, setVars] = useState(() => fields.map(f => f.id));
     const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [status, setStatus] = useState('');
     const [unitPref, setUnitPref] = useState('auto');
     const [drill, setDrill] = useState({}); // { fieldId: valueKey }
@@ -261,7 +262,7 @@ export function ReportsPanel({ tenant, cards, loading, t, lang, Icon, formatDate
     const statusCounts = useMemo(() => { const o = { active: 0, expired: 0, revoked: 0 }; filtered.forEach(c => { const s = c.status || 'active'; if (o[s] !== undefined) o[s]++; }); return o; }, [filtered]);
 
     const pick = (fid, key) => setDrill(d => { const n = { ...d }; if (n[fid] === key) delete n[fid]; else n[fid] = key; return n; });
-    const toggleVar = (id) => setVars(v => v.includes(id) ? v.filter(x => x !== id) : [...v, id]);
+    const toggleVar = (id) => setVars(v => v.includes(id) ? v.filter(x => x !== id) : fields.map(f => f.id).filter(x => x === id || v.includes(x)));
     const setRange = (days) => { if (!days) { setFrom(''); setTo(''); return; } const tn = dayNum(todayIso()); setFrom(numToIso(tn - days + 1)); setTo(numToIso(tn)); };
     const rangeActive = (days) => days ? (to === todayIso() && from === numToIso(dayNum(todayIso()) - days + 1)) : (!from && !to);
     const anyFilter = from || to || status || Object.keys(drill).length;
@@ -270,7 +271,7 @@ export function ReportsPanel({ tenant, cards, loading, t, lang, Icon, formatDate
 
     const exportAll = () => {
         const rows = [[t('report_variable'), t('report_value'), t('report_count'), t('report_percent')]];
-        vars.map(fieldById).filter(Boolean).forEach(f => {
+        fields.filter(f => vars.includes(f.id)).forEach(f => {
             const set = base.filter(c => matchesDrill(c, f.id)); const total = set.length;
             countValues(set, f, t('report_empty_value')).forEach(r => rows.push([f.label, r.label, r.count, total ? `${Math.round(r.count / total * 1000) / 10}%` : '0%']));
         });
@@ -340,7 +341,7 @@ export function ReportsPanel({ tenant, cards, loading, t, lang, Icon, formatDate
             </section>
 
             {vars.length === 0 && fields.length > 0 && <p className="text-center text-sm text-slate-500 glass rounded-2xl p-6">{t('report_pick_vars')}</p>}
-            {vars.map(fieldById).filter(Boolean).map(f => {
+            {fields.filter(f => vars.includes(f.id)).map(f => {
                 // نمودار هر متغیر با فیلترهای «سایر» متغیرها محاسبه می‌شود تا مقدار انتخاب‌شده‌ی خودش در کنار بقیه دیده شود
                 const set = base.filter(c => matchesDrill(c, f.id)); const total = set.length;
                 const pct = (n) => { if (!total) return fmt('0%'); const p = n / total * 100; const s = p > 0 && p < 1 ? '<1' : String(Math.round(p * 10) / 10); return fa ? `${fmt(s)}٪` : `${s}%`; };
