@@ -401,12 +401,22 @@ const FALLBACK_FA = {
     "stars_of": "از {0} ستاره", "stars_auto": "(بر اساس تعداد کارت‌های صادرشده، خودکار تعیین می‌شود)", "stars_required": "تعداد ستاره‌های روشن را وارد کنید:", "stars_range": "عدد باید بین ۰ تا {0} باشد", "bg_cors_error": "تصویر پس‌زمینه از دامنه دیگری است و اجازه دانلود ندارد. تصویر را روی همین سرور آپلود کنید."
 };
 
-const getT = (dicts, langCode) => (key, ...args) => {
+const getT = (dicts, langCode) => Object.assign((key, ...args) => {
     let str = ''; const d = dicts.find(x => x.lang_code === langCode);
     if (d && d.translations && d.translations[key]) str = d.translations[key];
     else { const dFa = dicts.find(x => x.lang_code === 'fa'); if (dFa && dFa.translations && dFa.translations[key]) str = dFa.translations[key]; else str = FALLBACK_FA[key] || key; }
     args.forEach((arg, i) => { str = str.split(`{${i}}`).join(arg); }); return str;
-};
+}, { lang: langCode });
+// --- ترجمه‌ی فیلدهای فرم ---
+// متن اصلی هر فیلد (label و گزینه‌ها) به زبان پایه‌ی سازمان است. ترجمه‌ها در field.i18n[lang] = { label, options: { «متن اصلی گزینه»: «ترجمه» } }.
+// مقدار ذخیره‌شده و چاپ‌شده روی کارت همیشه همان گزینه‌ی اصلی است؛ ترجمه فقط برای نمایش در فرم است.
+const FORM_LANGS = [{ code: 'fa', name: 'فارسی' }, { code: 'en', name: 'English' }, { code: 'ar', name: 'العربية' }, { code: 'tr', name: 'Türkçe' }];
+const langName = (code) => (FORM_LANGS.find(l => l.code === code) || { name: code }).name;
+const localizeFields = (fields, lang) => (fields || []).map(f => {
+    const tr = lang && f.i18n && f.i18n[lang]; if (!tr) return f;
+    const opts = tr.options || {};
+    return { ...f, label: (tr.label || '').trim() || f.label, options: Array.isArray(f.options) ? f.options.map(o => ({ ...o, label: (opts[o.display] || '').trim() })) : f.options };
+});
 
 // --- رسم روی canvas ---
 const shapePath = (ctx, shape, x, y, w, h) => {
@@ -807,7 +817,7 @@ function SharedFieldsRenderer({ formData, setFormData, inputWarnings, setInputWa
                         {f.type === 'text' && f.multiline && !isLinkedAndLocked && !f.autoIncrement && (<div><textarea id={`field-${f.id}`} rows={3} value={formData[f.id] || ''} onChange={e => handleTextChange(e, f, setFormData, setInputWarnings, t)} className={`w-full border rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none bg-white ${errorMsg ? 'border-red-500' : 'border-slate-300'}`} dir={isEnTextType(f) ? 'ltr' : 'rtl'} />{errorMsg && <p className="text-red-500 text-xs mt-1 px-1">{errorMsg}</p>}{inputWarnings[f.id] && <p className="text-red-500 text-xs mt-1 font-bold animate-pulse px-1">{inputWarnings[f.id]}</p>}</div>)}
                         {f.type === 'text' && !(f.multiline && !isLinkedAndLocked && !f.autoIncrement) && (<div><input type="text" value={formData[f.id] || ''} readOnly={isLinkedAndLocked || f.autoIncrement} placeholder={f.autoIncrement ? `${f.autoIncPrefix || ''}… ${t('auto_serial')}` : ''} onChange={e => handleTextChange(e, f, setFormData, setInputWarnings, t)} className={`w-full border rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all ${errorMsg ? 'border-red-500 ring-red-200' : 'border-slate-300'} ${isLinkedAndLocked || f.autoIncrement ? 'bg-slate-100 text-slate-500 cursor-not-allowed font-bold' : 'bg-white'}`} dir={isEnTextType(f) ? 'ltr' : 'rtl'} />{errorMsg && <p className="text-red-500 text-xs mt-1 px-1">{errorMsg}</p>}{inputWarnings[f.id] && <p className="text-red-500 text-xs mt-1 font-bold animate-pulse px-1">{inputWarnings[f.id]}</p>}</div>)}
                         {f.type === 'select' && customSelects[f.id] && (<div className="flex gap-2"><input type="text" value={formData[f.id] || ''} onChange={e => setFormData(p => ({ ...p, [f.id]: e.target.value }))} className="w-full border border-slate-300 rounded-xl px-4 py-3 bg-white" placeholder={`${t('manual_type')} ${f.label}...`} autoFocus /><button aria-label={t('back_to_list')} title={t('back_to_list')} onClick={() => { setCustomSelects(p => ({ ...p, [f.id]: false })); handleSelectChange('', f); }} className="bg-slate-100 px-4 rounded-xl"><Icon name="Undo" className="w-5 h-5" /></button></div>)}
-                        {f.type === 'select' && !customSelects[f.id] && (<select value={formData[f.id] || ''} onChange={e => handleSelectChange(e.target.value, f)} className="w-full border border-slate-300 rounded-xl px-4 py-3 bg-white"><option value="">{t('select_option')}</option>{(Array.isArray(f.options) ? f.options : []).filter(o => o.display).map((o, i) => <option key={i} value={o.display}>{o.display}</option>)}{f.hasOtherOption && <option value="__OTHER__" className="font-bold text-indigo-600 bg-indigo-50">{t('other_manual')}</option>}</select>)}
+                        {f.type === 'select' && !customSelects[f.id] && (<select value={formData[f.id] || ''} onChange={e => handleSelectChange(e.target.value, f)} className="w-full border border-slate-300 rounded-xl px-4 py-3 bg-white"><option value="">{t('select_option')}</option>{(Array.isArray(f.options) ? f.options : []).filter(o => o.display).map((o, i) => <option key={i} value={o.display}>{o.label || o.display}</option>)}{f.hasOtherOption && <option value="__OTHER__" className="font-bold text-indigo-600 bg-indigo-50">{t('other_manual')}</option>}</select>)}
                         {f.type === 'date' && (() => {
                             const parts = (formData[f.id] || '//').split('/');
                             const y = parts[0] || ''; const m = parts[1] || ''; const d = parts[2] || '';
@@ -866,7 +876,7 @@ function TenantLoginPreview({ data, t, realMode }) {
 function TenantFormPreview({ data, formData, setFormData, t, globalValidations }) {
     const [inputWarnings, setInputWarnings] = useState({}); const [customSelects, setCustomSelects] = useState({});
     const { handlePhotoUpload, cropModal } = usePhotoCrop(setFormData);
-    const visibleFields = getVisibleFields(data.fields, data);
+    const visibleFields = localizeFields(getVisibleFields(data.fields, data), t.lang);
     return (
         <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl p-8 overflow-y-auto">
             {cropModal(t)}
@@ -1699,7 +1709,7 @@ function AdminCardEditModal({ tenant, card, onClose, onSave, t, globalValidation
     const { handlePhotoUpload, cropModal } = usePhotoCrop(setFormData);
     useEscape(onClose);
     const [customSelects, setCustomSelects] = useState(() => { const init = {}; (tenant.fields || []).filter(f => f.type === 'select' && f.hasOtherOption).forEach(f => { const v = (card.cardData || {})[f.id]; if (v && !(f.options || []).find(o => o.display === v)) init[f.id] = true; }); return init; });
-    const visibleFields = getVisibleFields(tenant.fields, tenant);
+    const visibleFields = useMemo(() => localizeFields(getVisibleFields(tenant.fields, tenant), t.lang), [tenant, t.lang]);
     const hasErrors = formHasErrors(visibleFields, formData, t, globalValidations);
     const [showMissing, setShowMissing] = useState(false);
     const save = async () => {
@@ -2154,6 +2164,61 @@ function SlugEditor({ data, setData, originalSlug }) {
 
 /** تنظیمات بهره‌برداری سازمان: اعتبار کارت‌ها، وضعیت سامانه، زبان کاربران. */
 /** ترتیب نمایش فیلدها در فرم کاربر، با دکمه‌های بالا و پایین (ترتیب لایه‌ها روی کارت تغییر نمی‌کند). */
+/** ترجمه‌ی عنوان فیلدها و گزینه‌های فیلدهای انتخابی برای زبان‌های دیگر (نمایش در فرم با تغییر زبان). */
+function FieldTranslationsEditor({ data, setData }) {
+    const base = data.langCode || 'fa';
+    const langs = FORM_LANGS.filter(l => l.code !== base);
+    const [lang, setLang] = useState(langs[0].code);
+    const fields = getVisibleFields(data.fields, data);
+    const trOf = (f) => (f.i18n && f.i18n[lang]) || {};
+    const optsOf = (f) => f.type === 'select' && Array.isArray(f.options) ? [...new Set(f.options.map(o => o.display).filter(Boolean))] : [];
+    const update = (fid, fn) => setData(p => ({ ...p, fields: p.fields.map(f => f.id !== fid ? f : { ...f, i18n: { ...(f.i18n || {}), [lang]: fn(trOf(f)) } }) }));
+    const setLabel = (fid, v) => update(fid, tr => ({ ...tr, label: v }));
+    const setOpt = (fid, disp, v) => update(fid, tr => ({ ...tr, options: { ...(tr.options || {}), [disp]: v } }));
+    const progress = (code) => {
+        let total = 0, done = 0;
+        fields.forEach(f => { const tr = (f.i18n && f.i18n[code]) || {}; total++; if ((tr.label || '').trim()) done++; optsOf(f).forEach(o => { total++; if (((tr.options || {})[o] || '').trim()) done++; }); });
+        return [done, total];
+    };
+    const rtl = lang === 'fa' || lang === 'ar';
+    const [done, total] = progress(lang);
+    const inp = 'w-full min-w-0 border rounded-lg px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none';
+    return (
+        <div className="bg-white rounded-2xl shadow-sm border overflow-hidden mb-6">
+            <div className="p-5 border-b space-y-3">
+                <div><h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><Icon name="Languages" className="w-5 h-5 text-indigo-600" /> ترجمه‌ی فیلدهای فرم</h3>
+                    <p className="text-sm text-slate-500">وقتی کاربر زبان فرم را عوض کند، عنوان فیلدها و گزینه‌های فهرست‌ها به زبان او نشان داده می‌شود. هرجا ترجمه خالی بماند، همان متن اصلی ({langName(base)}) نمایش داده می‌شود. مقداری که روی کارت چاپ می‌شود تغییر نمی‌کند.</p>
+                    {data.allowLangSwitch === false && <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">تغییر زبان برای کاربران این سازمان خاموش است (مرحله ۱ ← تنظیمات بهره‌برداری). ترجمه‌ها فقط وقتی دیده می‌شوند که این گزینه روشن باشد.</p>}
+                </div>
+                <div role="tablist" aria-label="زبان ترجمه" className="flex flex-wrap gap-2">{langs.map(l => { const [d, tt] = progress(l.code); return (
+                    <button key={l.code} type="button" role="tab" aria-selected={lang === l.code} onClick={() => setLang(l.code)} className={`px-3 py-1.5 rounded-lg text-sm font-bold border flex items-center gap-2 ${lang === l.code ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 hover:bg-indigo-50'}`}>{l.name}<span className={`text-[10px] rounded-full px-1.5 py-0.5 ${lang === l.code ? 'bg-white/25' : 'bg-slate-100 text-slate-500'}`}>{d}/{tt}</span></button>); })}</div>
+            </div>
+            {fields.length === 0 ? <p className="text-center p-6 text-slate-400 text-sm">هنوز فیلدی برای فرم تعریف نشده است.</p> : (
+                <div role="tabpanel" className="divide-y">
+                    <div className="hidden sm:grid grid-cols-2 gap-3 px-5 py-2 bg-slate-50 text-[11px] font-bold text-slate-500"><span>متن اصلی ({langName(base)})</span><span>ترجمه ({langName(lang)})</span></div>
+                    {fields.map(f => { const tr = trOf(f); const opts = optsOf(f); const optDone = opts.filter(o => ((tr.options || {})[o] || '').trim()).length; return (
+                        <div key={f.id} className="px-5 py-3 space-y-2">
+                            <div className="grid sm:grid-cols-2 gap-1 sm:gap-3 items-center">
+                                <span className="text-sm font-bold text-slate-700 truncate">{f.label || '—'} <span className="text-[10px] font-normal text-slate-500 bg-slate-100 rounded-full px-2 py-0.5">{FIELD_TYPE_LABELS[f.type] || f.type}</span></span>
+                                <input value={tr.label || ''} onChange={e => setLabel(f.id, e.target.value)} placeholder={f.label} dir={rtl ? 'rtl' : 'ltr'} aria-label={`ترجمه‌ی عنوان ${f.label} به ${langName(lang)}`} className={inp} />
+                            </div>
+                            {opts.length > 0 && (
+                                <details className="bg-slate-50 border rounded-xl">
+                                    <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-indigo-700 select-none">گزینه‌های فهرست ({optDone}/{opts.length} ترجمه شده)</summary>
+                                    <div className="px-3 pb-3 space-y-1.5 max-h-80 overflow-y-auto">{opts.map(o => (
+                                        <div key={o} className="grid grid-cols-2 gap-3 items-center"><span className="text-sm text-slate-600 truncate" title={o}>{o}</span><input value={(tr.options || {})[o] || ''} onChange={e => setOpt(f.id, o, e.target.value)} placeholder={o} dir={rtl ? 'rtl' : 'ltr'} aria-label={`ترجمه‌ی گزینه‌ی ${o} به ${langName(lang)}`} className={inp} /></div>
+                                    ))}</div>
+                                </details>
+                            )}
+                        </div>
+                    ); })}
+                </div>
+            )}
+            {fields.length > 0 && <p className="px-5 py-2 text-[11px] text-slate-500 border-t bg-slate-50">پیشرفت {langName(lang)}: {done} از {total}. برای دیدن نتیجه، در مرحله «شبیه‌ساز فرم» زبان پیش‌نمایش را عوض کنید.</p>}
+        </div>
+    );
+}
+
 function FormOrderEditor({ data, setData }) {
     const fields = getVisibleFields(data.fields, data); const single = isSingleSided(data);
     const move = (i, dir) => {
@@ -2293,7 +2358,8 @@ function MobileEditorHint() {
     );
 }
 
-function SuperAdminWizard({ initialData, globalFonts, globalValidations, t, onComplete, onCancel }) {
+function SuperAdminWizard({ initialData, globalFonts, globalValidations, t, dicts = [], onComplete, onCancel }) {
+    const [previewLang, setPreviewLang] = useState('');
     const [data, setData, history] = useUndoableState(() => ({ ...INITIAL_WIZARD_DATA, theme: { ...platformState.defaultTheme }, ...(initialData || {}), adminPass: '', publicPass: '' }));
     const isEdit = !!data.id;
     const [step, setStep] = useState(1);
@@ -2433,9 +2499,9 @@ function SuperAdminWizard({ initialData, globalFonts, globalValidations, t, onCo
                     {step === 2 && <div className="h-full relative overflow-hidden"><LiquidBackground colors={themeOf(data)} fixed={false} /><div className="relative h-full flex items-center justify-center p-8 transform scale-90 origin-top"><TenantLoginPreview data={data} t={t} /></div></div>}
                     {step === 3 && sideEditor('front', 'frontBg')}
                     {step === 4 && !single && sideEditor('back', 'backBg')}
-                    {step === 5 && (<div className="h-full p-6 lg:p-12 overflow-y-auto flex flex-col items-center"><div className="max-w-4xl w-full"><FormOrderEditor data={data} setData={setData} /><div className="bg-white p-6 rounded-2xl shadow-sm border mb-6 flex justify-between items-center"><div><h3 className="font-bold text-lg text-slate-800">تخصیص فونت به فیلدها</h3><p className="text-sm text-slate-500">از فونت‌های پیش‌فرض یا آپلودی استفاده کنید.</p></div></div><div className="bg-white rounded-2xl shadow-sm border overflow-hidden"><table className="stack-table w-full text-right text-sm"><thead className="bg-slate-50 border-b"><tr><th className="p-4">المان چاپی</th><th className="p-4">انتخاب فونت</th><th className="p-4">پیش‌نمایش</th><th className="p-4">حداکثر سایز (Max px)</th></tr></thead><tbody className="divide-y">{activeFields.filter(f => f.printOnCard && (f.type === 'text' || f.type === 'select' || f.type === 'date')).map(f => (<tr key={f.id} className="hover:bg-slate-50"><td className="p-4 font-bold text-slate-700" data-label="المان چاپی">{f.label}</td><td className="p-4" data-label="انتخاب فونت"><select className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-full max-w-[200px]" value={f.fontFamily || 'Vazirmatn'} onChange={e => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, fontFamily: e.target.value } : df) }))}><optgroup label="پیش‌فرض">{DEFAULT_FONTS.map(font => <option key={font} value={font}>{font}</option>)}</optgroup><optgroup label="کتابخانه مرکزی">{globalFonts.map(font => <option key={font.font_key} value={font.font_name}>{font.font_name}</option>)}</optgroup></select></td><td className="p-4" data-label="پیش‌نمایش"><span className="font-preview text-xl text-slate-800 whitespace-nowrap" style={{ '--preview-font': `"${f.fontFamily || 'Vazirmatn'}"`, fontWeight: f.fontWeight === 'normal' ? 400 : 700 }}>{f.label || 'نمونه متن'} ۱۲۳ Abc</span></td><td className="p-4" data-label="حداکثر سایز"><input type="number" min="8" className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-24 text-center" value={f.maxFontSize || 40} onChange={e => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, maxFontSize: Number(e.target.value) } : df) }))} /> px</td></tr>))}{activeFields.filter(f => f.printOnCard && (f.type === 'text' || f.type === 'select' || f.type === 'date')).length === 0 && <tr><td colSpan="4" className="text-center p-6 text-slate-400">فیلدی برای تنظیم فونت وجود ندارد.</td></tr>}</tbody></table></div></div></div>)}
+                    {step === 5 && (<div className="h-full p-6 lg:p-12 overflow-y-auto flex flex-col items-center"><div className="max-w-4xl w-full"><FormOrderEditor data={data} setData={setData} /><FieldTranslationsEditor data={data} setData={setData} /><div className="bg-white p-6 rounded-2xl shadow-sm border mb-6 flex justify-between items-center"><div><h3 className="font-bold text-lg text-slate-800">تخصیص فونت به فیلدها</h3><p className="text-sm text-slate-500">از فونت‌های پیش‌فرض یا آپلودی استفاده کنید.</p></div></div><div className="bg-white rounded-2xl shadow-sm border overflow-hidden"><table className="stack-table w-full text-right text-sm"><thead className="bg-slate-50 border-b"><tr><th className="p-4">المان چاپی</th><th className="p-4">انتخاب فونت</th><th className="p-4">پیش‌نمایش</th><th className="p-4">حداکثر سایز (Max px)</th></tr></thead><tbody className="divide-y">{activeFields.filter(f => f.printOnCard && (f.type === 'text' || f.type === 'select' || f.type === 'date')).map(f => (<tr key={f.id} className="hover:bg-slate-50"><td className="p-4 font-bold text-slate-700" data-label="المان چاپی">{f.label}</td><td className="p-4" data-label="انتخاب فونت"><select className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-full max-w-[200px]" value={f.fontFamily || 'Vazirmatn'} onChange={e => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, fontFamily: e.target.value } : df) }))}><optgroup label="پیش‌فرض">{DEFAULT_FONTS.map(font => <option key={font} value={font}>{font}</option>)}</optgroup><optgroup label="کتابخانه مرکزی">{globalFonts.map(font => <option key={font.font_key} value={font.font_name}>{font.font_name}</option>)}</optgroup></select></td><td className="p-4" data-label="پیش‌نمایش"><span className="font-preview text-xl text-slate-800 whitespace-nowrap" style={{ '--preview-font': `"${f.fontFamily || 'Vazirmatn'}"`, fontWeight: f.fontWeight === 'normal' ? 400 : 700 }}>{f.label || 'نمونه متن'} ۱۲۳ Abc</span></td><td className="p-4" data-label="حداکثر سایز"><input type="number" min="8" className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-24 text-center" value={f.maxFontSize || 40} onChange={e => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, maxFontSize: Number(e.target.value) } : df) }))} /> px</td></tr>))}{activeFields.filter(f => f.printOnCard && (f.type === 'text' || f.type === 'select' || f.type === 'date')).length === 0 && <tr><td colSpan="4" className="text-center p-6 text-slate-400">فیلدی برای تنظیم فونت وجود ندارد.</td></tr>}</tbody></table></div></div></div>)}
                     {step === 6 && <div className="h-full relative overflow-hidden"><LiquidBackground colors={themeOf(data)} fixed={false} /><div className="relative h-full flex items-center justify-center p-4"><TenantLoginPreview data={data} t={t} realMode /></div></div>}
-                    {step === 7 && <div className="h-full p-6"><TenantFormPreview data={data} formData={previewFormData} setFormData={setPreviewFormData} t={t} globalValidations={globalValidations} /></div>}
+                    {step === 7 && (() => { const pl = previewLang || data.langCode || 'fa'; const pt = getT(dicts, pl); return <div className="h-full p-6 overflow-y-auto"><div className="max-w-2xl mx-auto mb-3 flex items-center justify-end gap-2 text-sm"><Icon name="Languages" className="w-4 h-4 text-indigo-600" /><label htmlFor="wz-preview-lang" className="font-bold text-slate-600">زبان پیش‌نمایش</label><select id="wz-preview-lang" value={pl} onChange={e => setPreviewLang(e.target.value)} className="border rounded-lg px-2 py-1 bg-white font-bold text-slate-700">{FORM_LANGS.map(l => <option key={l.code} value={l.code}>{l.name}{l.code === (data.langCode || 'fa') ? ' (اصلی)' : ''}</option>)}</select></div><div dir={pl === 'fa' || pl === 'ar' ? 'rtl' : 'ltr'}><TenantFormPreview data={data} formData={previewFormData} setFormData={setPreviewFormData} t={pt} globalValidations={globalValidations} /></div></div>; })()}
                     {step === 8 && (<div className="h-full p-6 flex flex-col items-center justify-center overflow-y-auto"><div className="mb-6 bg-blue-50 text-blue-700 p-4 rounded-xl border border-blue-200 text-sm max-w-2xl w-full text-center shadow-sm">پیش‌نمایش بر اساس داده‌های تستی مرحله قبل ساخته شده است.</div><CardLivePreview config={data} userData={previewFormData} showActions showcase t={t} /></div>)}
                     {step === 9 && (<div className="h-full flex flex-col p-6 overflow-y-auto"><div className="bg-white p-6 rounded-2xl shadow-sm mb-6 border max-w-6xl mx-auto w-full"><h3 className="font-bold text-slate-800 mb-3">ترکیب ستون «نام صاحب کارت» در داشبورد</h3><div className="flex gap-2 flex-wrap">{activeFields.filter(f => f.type !== 'photo' && f.type !== 'barcode' && f.type !== 'qrcode' && f.type !== 'stars').map(f => (<label key={f.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${(data.dashboardNameFormat || []).includes(f.id) ? 'bg-indigo-50 border-indigo-300 text-indigo-800' : 'bg-slate-50 hover:bg-slate-100'}`}><input type="checkbox" className="accent-indigo-600" checked={(data.dashboardNameFormat || []).includes(f.id)} onChange={e => setData(p => { const arr = p.dashboardNameFormat || []; return { ...p, dashboardNameFormat: e.target.checked ? [...arr, f.id] : arr.filter(id => id !== f.id) }; })} /> <span className="text-sm font-medium">{f.label}</span></label>))}</div></div><TenantDashboardPreview data={data} previewFormData={previewFormData} t={t} /></div>)}
                     {step === 10 && (<div className="h-full flex flex-col items-center justify-center text-center p-8"><div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6"><Icon name="Check" className="w-12 h-12" /></div><h2 className="text-3xl font-bold text-slate-800 mb-4">{t('platform_ready')}</h2><div className="max-w-md w-full mb-24"><SideDimsReport data={data} setData={setData} dims={sideDims} /></div></div>)}
@@ -2597,7 +2663,7 @@ function TenantForm({ tenant, t, lang, langControl, globalValidations, onLogout 
     useEffect(() => { if (!isIssued && !issuedCardId) saveDraft(draftKey, { formData, reqName: requesterName, customs: customSelects }); }, [formData, requesterName, customSelects, isIssued, issuedCardId]);
     const resetForm = () => { setFormData({}); setRequesterName(''); setCustomSelects({}); setIssuedCardId(null); setShowMissing(false); removeDraft(draftKey); };
     const clearForm = async () => { if (await askConfirm(t('clear_confirm'), { danger: true, okText: t('clear_form'), cancelText: t('cancel') })) resetForm(); };
-    const visibleFields = getVisibleFields(tenant.fields, tenant);
+    const visibleFields = useMemo(() => localizeFields(getVisibleFields(tenant.fields, tenant), t.lang), [tenant, t.lang]);
     const closed = tenant.closedReason;
 
     const handleIssue = async () => {
@@ -2931,7 +2997,7 @@ function CardPlatform() {
         <><LiquidBackground /><div className={`min-h-screen text-slate-800 flex flex-col relative z-10 ${!isRtl ? 'text-left' : ''}`}>
             {appState === 'LANDING' && <SystemEntry mode={systemMode} tenant={publicTenant} t={t} langControl={systemMode === 'TENANT_PORTAL' ? langControl : null} onSuperAdmin={async () => { await refreshTenants(); setAppState('SUPER_ADMIN'); }} onTenantLogin={(role, tenant) => { setCurrentTenant(tenant); setAppState(role === 'ADMIN' ? 'TENANT_DASHBOARD' : 'TENANT_FORM'); }} />}
             {appState === 'SUPER_ADMIN' && <SuperAdminPanel tenants={tenants} t={t} fetchGlobalFonts={fetchGlobalFonts} fetchGlobalValidations={fetchGlobalValidations} onNewWizard={() => { setEditingTenant(null); setAppState('WIZARD'); }} onEditWizard={(tn) => { setEditingTenant(tn); setAppState('WIZARD'); }} onDuplicateWizard={(dup) => { setEditingTenant(dup); setAppState('WIZARD'); }} onDeleteWizard={deleteTenant} onRefresh={refreshTenants} publishedId={publishedId} onPublishedSeen={() => setPublishedId(null)} onLogout={() => logout()} />}
-            {appState === 'WIZARD' && <SuperAdminWizard initialData={editingTenant} globalFonts={globalFonts} globalValidations={globalValidations} t={t} onComplete={(id) => { refreshTenants(); setAppState('SUPER_ADMIN'); setEditingTenant(null); setPublishedId(id); }} onCancel={() => { refreshTenants(); setAppState('SUPER_ADMIN'); setEditingTenant(null); }} />}
+            {appState === 'WIZARD' && <SuperAdminWizard initialData={editingTenant} globalFonts={globalFonts} globalValidations={globalValidations} t={t} dicts={dicts} onComplete={(id) => { refreshTenants(); setAppState('SUPER_ADMIN'); setEditingTenant(null); setPublishedId(id); }} onCancel={() => { refreshTenants(); setAppState('SUPER_ADMIN'); setEditingTenant(null); }} />}
             {appState === 'TENANT_DASHBOARD' && currentTenant && <TenantDashboard tenant={currentTenant} t={t} lang={tLang} langControl={langControl} globalValidations={globalValidations} onLogout={() => logout(currentTenant.id)} />}
             {appState === 'TENANT_FORM' && currentTenant && <TenantForm tenant={currentTenant} t={t} lang={tLang} langControl={langControl} globalValidations={globalValidations} onLogout={() => logout(currentTenant.id)} />}
         </div></>
