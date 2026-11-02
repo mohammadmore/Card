@@ -1964,7 +1964,7 @@ function PlatformSettingsModal({ onClose }) {
                 </div>}
 
                 {tab === 'hero' && <div className="space-y-4" role="tabpanel">
-                    <p className="text-sm text-slate-600 leading-7">کارت متحرک بالای صفحه‌ی معرفی به‌ترتیب این چهار نفر را نشان می‌دهد: فیلدها کنار کارت پر می‌شوند، روی «صدور آنی کارت» کلیک می‌شود و کارت پس از سه دور چرخش سریع با رنگ، عکس و اطلاعات نفر بعد ظاهر می‌شود. لوگوی روی کارت، همان لوگوی پلتفرم (تب «هویت و ظاهر») است.</p>
+                    <p className="text-sm text-slate-600 leading-7">کارت متحرک بالای صفحه‌ی معرفی به‌ترتیب این چهار نفر را نشان می‌دهد: نام و سمت کنار کارت تایپ می‌شوند، روی «صدور آنی کارت» کلیک می‌شود و کارت پس از سه دور چرخش سریع با رنگ، عکس و اطلاعات نفر بعد ظاهر می‌شود. لوگوی روی کارت، همان لوگوی پلتفرم (تب «هویت و ظاهر») است.</p>
                     {!hero ? <p className="text-center text-slate-500 py-6">در حال بارگذاری…</p> : hero.map((p, i) => (
                         <div key={i} className="bg-white/60 border rounded-2xl p-4 space-y-3" style={{ borderInlineStartWidth: 6, borderInlineStartColor: p.color }}>
                             <div className="flex items-center gap-2"><b className="text-slate-800 me-auto">نفر {toPersianNum(i + 1)}</b><label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">رنگ کارت<input type="color" value={p.color} onChange={e => setPerson(i, { color: e.target.value })} className="w-9 h-7 rounded border cursor-pointer" aria-label={`رنگ کارت نفر ${i + 1}`} /></label></div>
@@ -1974,7 +1974,7 @@ function PlatformSettingsModal({ onClose }) {
                                 <div><label className="text-xs font-bold text-slate-600 block mb-1" htmlFor={`hero-ne-${i}`}>Full name (English)</label><input id={`hero-ne-${i}`} dir="ltr" value={p.name.en} maxLength={60} onChange={e => setPerson(i, { name: { ...p.name, en: e.target.value } })} className="w-full border rounded-xl px-3 py-2 text-sm bg-white/80 text-left" /></div>
                                 <div><label className="text-xs font-bold text-slate-600 block mb-1" htmlFor={`hero-rf-${i}`}>سمت</label><input id={`hero-rf-${i}`} value={p.role.fa} maxLength={60} onChange={e => setPerson(i, { role: { ...p.role, fa: e.target.value } })} className="w-full border rounded-xl px-3 py-2 text-sm bg-white/80" /></div>
                                 <div><label className="text-xs font-bold text-slate-600 block mb-1" htmlFor={`hero-re-${i}`}>Position (English)</label><input id={`hero-re-${i}`} dir="ltr" value={p.role.en} maxLength={60} onChange={e => setPerson(i, { role: { ...p.role, en: e.target.value } })} className="w-full border rounded-xl px-3 py-2 text-sm bg-white/80 text-left" /></div>
-                                <div><label className="text-xs font-bold text-slate-600 block mb-1" htmlFor={`hero-age-${i}`}>سن</label><input id={`hero-age-${i}`} type="number" min="0" max="120" dir="ltr" value={p.age} onChange={e => setPerson(i, { age: Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0)) })} className="w-24 border rounded-xl px-3 py-2 text-sm bg-white/80 text-center" /></div>
+                                
                             </div>
                         </div>
                     ))}

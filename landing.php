@@ -208,7 +208,6 @@ $jsonLd = [
               <div class="lp-hs-photo"><img data-k="photo" src="<?= h($first['photo']) ?>" alt=""<?= $first['photo'] === '' ? ' hidden' : '' ?>><span class="lp-hs-sil"<?= $first['photo'] !== '' ? ' hidden' : '' ?>></span></div>
               <dl class="lp-hs-rows">
                 <div><dt><?= h($hl['name']) ?>:</dt><dd data-k="name"><?= h($first['name']) ?></dd></div>
-                <div><dt><?= h($hl['age']) ?>:</dt><dd data-k="age"><?= h($first['age']) ?></dd></div>
                 <div><dt><?= h($hl['role']) ?>:</dt><dd data-k="role"><?= h($first['role']) ?></dd></div>
               </dl>
             </div>
@@ -217,7 +216,7 @@ $jsonLd = [
           <div class="lp-hero-shadow"></div>
         </div>
         <div class="lp-hs-form">
-          <?php foreach (['name', 'age', 'role'] as $i => $k): ?>
+          <?php foreach (['name', 'role'] as $i => $k): ?>
             <div class="lp-hs-field" style="--d: <?= $i * 0.7 ?>s"><span class="lp-hs-label"><?= h($hl[$k]) ?></span><div class="lp-hs-input" data-f="<?= $k ?>"><span class="lp-hs-text"></span><i class="lp-hs-caret"></i></div></div>
           <?php endforeach; ?>
           <button type="button" class="lp-hs-btn lp-btn" tabindex="-1"><?= $ic('sparkles', 'w-4 h-4') ?> <?= h($hl['btn']) ?></button>
@@ -413,7 +412,7 @@ $jsonLd = [
     var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     var setCard = function (p) {
       card.style.setProperty('--pc', p.color);
-      root.querySelector('[data-k=name]').textContent = p.name; root.querySelector('[data-k=age]').textContent = p.age; root.querySelector('[data-k=role]').textContent = p.role;
+      root.querySelector('[data-k=name]').textContent = p.name; root.querySelector('[data-k=role]').textContent = p.role;
       var img = root.querySelector('img[data-k=photo]'), sil = root.querySelector('.lp-hs-sil');
       if (p.photo) { img.src = p.photo; img.hidden = false; sil.hidden = true; } else { img.hidden = true; sil.hidden = false; }
     };
@@ -459,7 +458,7 @@ $jsonLd = [
         var p = people[idx];
         Object.keys(inputs).forEach(function (k) { inputs[k].querySelector('.lp-hs-text').textContent = ''; });
         await wait(500);
-        await type('name', p.name); await wait(250); await type('age', p.age); await wait(250); await type('role', p.role); await wait(400);
+        await type('name', p.name); await wait(300); await type('role', p.role); await wait(400);
         await moveCursor();
         btn.classList.add('lp-hs-press'); cursor.classList.add('lp-hs-click'); await wait(180); btn.classList.remove('lp-hs-press'); cursor.classList.remove('lp-hs-click');
         await new Promise(function (r) { spin = { from: shown, to: 1080, start: performance.now(), dur: 1700, swapped: false, onSwap: function () { setCard(p); }, onDone: r }; kick(); });
