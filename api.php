@@ -310,7 +310,7 @@ function tenant_client_view(array $t, bool $withWebhooks): array {
     return $t;
 }
 function tenant_public_view(array $t): array {
-    return array_intersect_key($t, array_flip(['id', 'slug', 'orgName', 'logoUrl', 'logoUrlDark', 'welcomeText', 'langCode', 'allowLangSwitch'])) + ['closedReason' => tenant_closed_reason($t), 'theme' => sanitize_theme($t['theme'] ?? null)];
+    return array_intersect_key($t, array_flip(['id', 'slug', 'orgName', 'logoUrl', 'logoUrlDark', 'i18n', 'welcomeText', 'langCode', 'allowLangSwitch'])) + ['closedReason' => tenant_closed_reason($t), 'theme' => sanitize_theme($t['theme'] ?? null)];
 }
 /** اعتبارسنجی و اعمال رمزهای جدید روی رکورد سازمان. */
 function apply_passwords(array &$t, string $adminPass, string $publicPass, bool $isNew): void {
@@ -855,6 +855,15 @@ $routes = [
         $data['allowLangSwitch'] = ($input['allowLangSwitch'] ?? true) !== false;
         // رنگ‌های گرادیانت پس‌زمینه‌ی پنل این سازمان
         $data['theme'] = sanitize_theme($input['theme'] ?? null);
+        // ترجمه‌ی نام سازمان و متن خوش‌آمدگویی: i18n[lang] = { orgName, welcomeText }
+        $i18n = [];
+        foreach (in_arr($input, 'i18n') as $lc => $tr) {
+            if (!is_string($lc) || !preg_match('/^[a-z]{2,3}$/', $lc) || !is_array($tr)) continue;
+            $one = ['orgName' => trim(in_str($tr, 'orgName', 200)), 'welcomeText' => trim(in_str($tr, 'welcomeText', 2000))];
+            $one = array_filter($one, fn($v) => $v !== '');
+            if ($one) $i18n[$lc] = $one;
+        }
+        $data['i18n'] = $i18n ?: new stdClass();
         // لوگوی اختیاری برای حالت تیره (خالی = همان لوگوی عادی)
         $data['logoUrlDark'] = trim(in_str($input, 'logoUrlDark', 1000));
         if ($data['logoUrlDark'] !== '' && !valid_image_url($data['logoUrlDark'])) fail_field('لینک لوگوی حالت تیره نامعتبر است. یک فایل آپلود کنید یا لینکی که با https:// شروع می‌شود وارد کنید.', 'logoUrlDark');
