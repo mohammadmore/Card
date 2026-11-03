@@ -1900,7 +1900,11 @@ function PlatformSettingsModal({ onClose }) {
     const [tab, setTab] = useState('identity');
     const [hero, setHero] = useState(null); const [heroDirty, setHeroDirty] = useState(false);
     useEffect(() => { if (tab === 'hero' && !hero) apiGet('hero_settings').then(r => setHero(r.people)).catch(notifyError); }, [tab]);
-    const setPerson = (i, patch) => { setHero(h => h.map((p, j) => j === i ? { ...p, ...patch } : p)); setHeroDirty(true); setErrors(e => ({ ...e, [`hero.${i}.photo`]: undefined })); };
+    const HERO_COLORS = ['#7c3aed', '#0ea5e9', '#10b981', '#f43f5e', '#f59e0b', '#6366f1', '#14b8a6', '#ec4899'];
+    const addPerson = () => { setHero(h => [...h, { photo: '', color: HERO_COLORS[h.length % HERO_COLORS.length], name: { fa: '', en: '' }, age: 30, role: { fa: '', en: '' } }]); setHeroDirty(true); };
+    const removePerson = (i) => { setHero(h => h.filter((_, j) => j !== i)); setHeroDirty(true); setErrors({}); };
+    const movePerson = (i, dir) => { setHero(h => { const a = [...h]; const j = i + dir; if (j < 0 || j >= a.length) return a; [a[i], a[j]] = [a[j], a[i]]; return a; }); setHeroDirty(true); };
+    const setPerson = (i, patch) => { setHero(h => h.map((p, j) => j === i ? { ...p, ...patch } : p)); setHeroDirty(true); setErrors(e => ({ ...e, [`hero.${i}.photo`]: undefined, [`hero.${i}.name`]: undefined })); };
     const [d, setD] = useState(() => ({ ...current, footer: { ...current.footer } }));
     const [errors, setErrors] = useState({}); const [saving, setSaving] = useState(false);
     const set = (k, v) => { setD(p => ({ ...p, [k]: v })); setErrors(e => ({ ...e, [k]: undefined })); };
@@ -1911,11 +1915,11 @@ function PlatformSettingsModal({ onClose }) {
         const payload = { name: d.name, logoUrl: d.logoUrl.trim(), logoUrlDark: (d.logoUrlDark || '').trim(), faviconUrl: d.faviconUrl.trim(), footer: d.footer, defaultTheme: d.defaultTheme, superTheme: d.superTheme, idleMinutes: Number(d.idleMinutes), loginMaxAttempts: Number(d.loginMaxAttempts), loginLockMinutes: Number(d.loginLockMinutes) };
         try {
             const r = await apiPost('save_platform_settings', payload); setPlatform(r.platform);
-            if (hero && heroDirty) { try { await apiPost('save_hero', { people: hero }); } catch (e) { if (e.field) { setErrors({ [e.field]: e.message }); setTab('hero'); } throw e; } }
+            if (hero && heroDirty) { await apiPost('save_hero', { people: hero }); setHeroDirty(false); }
             notifySuccess('تنظیمات پلتفرم ذخیره شد.'); onClose();
         }
         catch (e) {
-            if (e.field) { setErrors({ [e.field]: e.message }); setTab(['idleMinutes', 'loginMaxAttempts', 'loginLockMinutes'].includes(e.field) ? 'security' : 'identity'); }
+            if (e.field) { setErrors({ [e.field]: e.message }); setTab(e.field.startsWith('hero.') ? 'hero' : ['idleMinutes', 'loginMaxAttempts', 'loginLockMinutes'].includes(e.field) ? 'security' : 'identity'); }
             else notifyError(e);
         }
         setSaving(false);
@@ -1964,13 +1968,13 @@ function PlatformSettingsModal({ onClose }) {
                 </div>}
 
                 {tab === 'hero' && <div className="space-y-4" role="tabpanel">
-                    <p className="text-sm text-slate-600 leading-7">کارت متحرک بالای صفحه‌ی معرفی به‌ترتیب این چهار نفر را نشان می‌دهد: نام و سمت کنار کارت تایپ می‌شوند، روی «صدور آنی کارت» کلیک می‌شود و کارت پس از سه دور چرخش سریع با رنگ، عکس و اطلاعات نفر بعد ظاهر می‌شود. لوگوی روی کارت، همان لوگوی پلتفرم (تب «هویت و ظاهر») است.</p>
+                    <p className="text-sm text-slate-600 leading-7">کارت متحرک بالای صفحه‌ی معرفی به‌ترتیب این افراد را نشان می‌دهد: نام و سمت کنار کارت تایپ می‌شوند، روی «صدور آنی کارت» کلیک می‌شود و کارت پس از سه دور چرخش سریع با رنگ، عکس و اطلاعات نفر بعد ظاهر می‌شود. لوگوی روی کارت، همان لوگوی پلتفرم (تب «هویت و ظاهر») است.</p>
                     {!hero ? <p className="text-center text-slate-500 py-6">در حال بارگذاری…</p> : hero.map((p, i) => (
                         <div key={i} className="bg-white/60 border rounded-2xl p-4 space-y-3" style={{ borderInlineStartWidth: 6, borderInlineStartColor: p.color }}>
-                            <div className="flex items-center gap-2"><b className="text-slate-800 me-auto">نفر {toPersianNum(i + 1)}</b><label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">رنگ کارت<input type="color" value={p.color} onChange={e => setPerson(i, { color: e.target.value })} className="w-9 h-7 rounded border cursor-pointer" aria-label={`رنگ کارت نفر ${i + 1}`} /></label></div>
+                            <div className="flex items-center gap-2"><b className="text-slate-800 me-auto">نفر {toPersianNum(i + 1)}</b><button type="button" onClick={() => movePerson(i, -1)} disabled={i === 0} aria-label={`جابه‌جایی نفر ${i + 1} به بالا`} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-30"><Icon name="ArrowUp" className="w-4 h-4" /></button><button type="button" onClick={() => movePerson(i, 1)} disabled={i === hero.length - 1} aria-label={`جابه‌جایی نفر ${i + 1} به پایین`} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-30"><Icon name="ArrowDown" className="w-4 h-4" /></button><button type="button" onClick={() => removePerson(i)} disabled={hero.length <= 1} aria-label={`حذف نفر ${i + 1}`} title="حذف" className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-30"><Icon name="Trash2" className="w-4 h-4" /></button><label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">رنگ کارت<input type="color" value={p.color} onChange={e => setPerson(i, { color: e.target.value })} className="w-9 h-7 rounded border cursor-pointer" aria-label={`رنگ کارت نفر ${i + 1}`} /></label></div>
                             <ImageSettingField id={`hero-photo-${i}`} label="عکس" hint="عکس پرسنلی (چهره و شانه)، ترجیحاً عمودی. اگر خالی بماند، یک تصویر خنثی نشان داده می‌شود." value={p.photo || ''} onChange={v => setPerson(i, { photo: v })} error={errors[`hero.${i}.photo`]} maxSize={700} previewClass="w-16 h-20" clearLabel="حذف عکس" />
                             <div className="grid sm:grid-cols-2 gap-3">
-                                <div><label className="text-xs font-bold text-slate-600 block mb-1" htmlFor={`hero-nf-${i}`}>نام و نام خانوادگی</label><input id={`hero-nf-${i}`} value={p.name.fa} maxLength={60} onChange={e => setPerson(i, { name: { ...p.name, fa: e.target.value } })} className="w-full border rounded-xl px-3 py-2 text-sm bg-white/80" /></div>
+                                <div><label className="text-xs font-bold text-slate-600 block mb-1" htmlFor={`hero-nf-${i}`}>نام و نام خانوادگی</label><input id={`hero-nf-${i}`} value={p.name.fa} maxLength={60} onChange={e => setPerson(i, { name: { ...p.name, fa: e.target.value } })} aria-invalid={!!errors[`hero.${i}.name`]} className="w-full border rounded-xl px-3 py-2 text-sm bg-white/80" />{errors[`hero.${i}.name`] && <p role="alert" className="text-xs text-red-600 mt-1">{errors[`hero.${i}.name`]}</p>}</div>
                                 <div><label className="text-xs font-bold text-slate-600 block mb-1" htmlFor={`hero-ne-${i}`}>Full name (English)</label><input id={`hero-ne-${i}`} dir="ltr" value={p.name.en} maxLength={60} onChange={e => setPerson(i, { name: { ...p.name, en: e.target.value } })} className="w-full border rounded-xl px-3 py-2 text-sm bg-white/80 text-left" /></div>
                                 <div><label className="text-xs font-bold text-slate-600 block mb-1" htmlFor={`hero-rf-${i}`}>سمت</label><input id={`hero-rf-${i}`} value={p.role.fa} maxLength={60} onChange={e => setPerson(i, { role: { ...p.role, fa: e.target.value } })} className="w-full border rounded-xl px-3 py-2 text-sm bg-white/80" /></div>
                                 <div><label className="text-xs font-bold text-slate-600 block mb-1" htmlFor={`hero-re-${i}`}>Position (English)</label><input id={`hero-re-${i}`} dir="ltr" value={p.role.en} maxLength={60} onChange={e => setPerson(i, { role: { ...p.role, en: e.target.value } })} className="w-full border rounded-xl px-3 py-2 text-sm bg-white/80 text-left" /></div>
@@ -1978,6 +1982,7 @@ function PlatformSettingsModal({ onClose }) {
                             </div>
                         </div>
                     ))}
+                    {hero && <div className="flex flex-wrap items-center gap-3"><button type="button" onClick={addPerson} disabled={hero.length >= 12} className="px-4 py-2 rounded-xl font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-40">+ افزودن نفر</button><span className="text-xs text-slate-500">{toPersianNum(hero.length)} نفر — حداقل ۱ و حداکثر ۱۲. ترتیب نمایش در صفحه همین ترتیب است.</span></div>}
                 </div>}
                 {tab === 'security' && <div className="space-y-5" role="tabpanel">
                     <SuperPasswordForm />

@@ -633,6 +633,9 @@ function commerce_routes(PDO $pdo, array $input, array $config): array {
         'POST save_hero' => function () use ($pdo, $input) {
             require_super();
             $in = array_values(in_arr($input, 'people'));
+            if (count($in) < 1) fail('حداقل یک نفر لازم است.');
+            if (count($in) > 12) fail('حداکثر ۱۲ نفر.');
+            foreach ($in as $i => $p) { if (!is_array($p) || trim((string)($p['name']['fa'] ?? '')) === '') fail_field('نام فارسی نفر ' . ($i + 1) . ' را وارد کنید.', "hero.$i.name"); }
             foreach ($in as $i => $p) { $ph = is_array($p) ? trim((string)($p['photo'] ?? '')) : ''; if ($ph !== '' && !valid_image_url($ph)) fail_field('عکس نفر ' . ($i + 1) . ' معتبر نیست. دوباره آپلود کنید.', "hero.$i.photo"); }
             $people = hero_people_merge($in, 'valid_image_url');
             set_setting($pdo, 'hero_cards', json_enc($people)); audit($pdo, '', 'hero_saved');

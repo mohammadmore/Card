@@ -172,7 +172,7 @@ function landing_default_plans(): array {
     ];
 }
 
-/** چهار نفر نمونه‌ی کارت متحرک بالای صفحه‌ی معرفی (از «تنظیمات پلتفرم ← کارت صفحه‌ی اصلی» قابل تغییر). */
+/** نفرات نمونه‌ی پیش‌فرض کارت متحرک بالای صفحه‌ی معرفی (از «تنظیمات پلتفرم ← کارت صفحه‌ی اصلی» قابل تغییر؛ تعداد هم). */
 function hero_default_people(): array {
     return [
         ['photo' => '', 'color' => '#7c3aed', 'name' => ['fa' => 'سارا محمدی', 'en' => 'Sara Mohammadi'], 'age' => 29, 'role' => ['fa' => 'طراح ارشد محصول', 'en' => 'Senior Product Designer']],
@@ -183,11 +183,13 @@ function hero_default_people(): array {
 }
 /** ادغام مقادیر ذخیره‌شده با پیش‌فرض‌ها و پاک‌سازی (هم در api و هم در landing.php). */
 function hero_people_merge($saved, ?callable $validImage = null): array {
-    $def = hero_default_people(); $saved = is_array($saved) ? array_values($saved) : [];
+    // تعداد نفرات از تنظیمات است (۱ تا ۱۲)؛ اگر هنوز چیزی ذخیره نشده، چهار نفر پیش‌فرض
+    $def = hero_default_people(); $saved = is_array($saved) ? array_values(array_filter($saved, 'is_array')) : [];
     $txt = fn($v, $max) => is_scalar($v) ? mb_substr(trim((string)$v), 0, $max) : '';
+    $list = $saved ? array_slice($saved, 0, 12) : $def;
     $out = [];
-    foreach ($def as $i => $d) {
-        $s = is_array($saved[$i] ?? null) ? $saved[$i] : [];
+    foreach ($list as $i => $s) {
+        $d = $def[$i % count($def)];
         $photo = $txt($s['photo'] ?? '', 500);
         if ($photo !== '' && $validImage && !$validImage($photo)) $photo = '';
         $color = preg_match('/^#[0-9a-fA-F]{6}$/', (string)($s['color'] ?? '')) ? $s['color'] : $d['color'];
