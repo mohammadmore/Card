@@ -1466,8 +1466,12 @@ const ModalShell = ({ title, icon, onClose, wide, children }) => { useEscape(onC
 // --- لیست‌های پایه ↔ اکسل: ستون A «نمایش در فرم»، ستون B «چاپ روی کارت»، ستون‌های بعدی = ستون‌های وابسته ---
 const PRESET_HEADERS = ['نمایش در فرم', 'چاپ روی کارت'];
 const PRESET_HEADER_WORDS = ['نمایش در فرم', 'نمایش', 'عنوان', 'نام', 'گزینه', 'مقدار', 'display', 'title', 'name', 'option', 'value', 'label'];
-const normCell = (s) => normalizeFa(String(s ?? '')).replace(/\s+/g, ' ').trim();
-const optKey = (s) => normCell(s).toLowerCase();
+// متن سلول همان‌طور که نوشته شده می‌ماند (حروف عربی ي/ك تبدیل نمی‌شوند)؛ فقط فاصله‌های اضافه کم می‌شود.
+// برای تشخیص تکراری و عنوان، ي/ك و حروف بزرگ/کوچک یکسان حساب می‌شوند.
+const normCell = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+const optKey = (s) => normalizeFa(normCell(s)).toLowerCase();
+// حدود ذخیره در سرور (api.php: save_preset)؛ ورود از اکسل همین‌ها را پیش از ذخیره اعمال و گزارش می‌کند
+const PRESET_LIMITS = { text: 500, colTitle: 100, cols: 50, options: 10000 };
 const presetToRows = (p) => {
     const cols = p.cols || [];
     return [[...PRESET_HEADERS, ...cols], ...(p.options || []).map(o => [o.display || '', o.print || '', ...cols.map(c => (o.colValues || {})[c] || '')])];
@@ -1475,20 +1479,28 @@ const presetToRows = (p) => {
 /** ردیف‌های فایل → گزینه‌ها و ستون‌ها. ردیف عنوان (اگر باشد) خودکار تشخیص داده می‌شود؛ تکراری‌ها و ردیف‌های خالی کنار گذاشته می‌شوند. */
 const rowsToPreset = (rows) => {
     const clean = rows.map(r => (r || []).map(normCell)).filter(r => r.some(Boolean));
-    if (!clean.length) return { options: [], cols: [], empty: 0, dup: 0, header: false };
+    if (!clean.length) return { options: [], cols: [], empty: 0, dup: 0, header: false, cut: 0, colsDropped: 0 };
     const first = clean[0];
     const header = PRESET_HEADER_WORDS.includes(optKey(first[0])) || optKey(first[1]) === optKey(PRESET_HEADERS[1]);
     const body = header ? clean.slice(1) : clean;
     const width = Math.max(header ? first.length : 0, ...body.map(r => r.length));
-    const cols = Array.from({ length: Math.max(0, width - 2) }, (_, i) => (header && first[i + 2]) || `ستون ${i + 1}`);
+    const wanted = Math.max(0, width - 2); const colsDropped = Math.max(0, wanted - PRESET_LIMITS.cols);
+    let cut = 0; const clip = (v, n) => { if (v.length > n) { cut++; return v.slice(0, n); } return v; };
+    // عنوان ستون‌های وابسته یکتا می‌شود (دو ستون هم‌نام در سرور یکی می‌شدند و مقدار یکی از آن‌ها گم می‌شد)
+    const used = new Set();
+    const cols = Array.from({ length: Math.min(wanted, PRESET_LIMITS.cols) }, (_, i) => {
+        const base = clip((header && first[i + 2]) || `ستون ${i + 1}`, PRESET_LIMITS.colTitle); let name = base; let n = 2;
+        while (used.has(optKey(name))) name = `${base} (${n++})`;
+        used.add(optKey(name)); return name;
+    });
     const seen = new Set(); const options = []; let empty = 0; let dup = 0;
     body.forEach(r => {
         if (!r[0]) { empty++; return; }
         const k = optKey(r[0]); if (seen.has(k)) { dup++; return; } seen.add(k);
-        const colValues = {}; cols.forEach((c, i) => { if (r[i + 2]) colValues[c] = r[i + 2]; });
-        options.push({ display: r[0], print: r[1] || '', colValues });
+        const colValues = {}; cols.forEach((c, i) => { if (r[i + 2]) colValues[c] = clip(r[i + 2], PRESET_LIMITS.text); });
+        options.push({ display: clip(r[0], PRESET_LIMITS.text), print: clip(r[1] || '', PRESET_LIMITS.text), colValues });
     });
-    return { options, cols, empty, dup, header };
+    return { options, cols, empty, dup, header, cut, colsDropped };
 };
 const keyFromFileName = (name) => {
     const base = String(name || '').replace(/\.[^.]+$/, '').toUpperCase().replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
@@ -1498,14 +1510,18 @@ const downloadPresetXlsx = async (p) => {
     try { downloadBlob(await writeXlsx(presetToRows(p), { sheetName: p.title || p.preset_key }), `${safeFileName(p.title || p.preset_key || 'list')}.xlsx`); }
     catch (e) { notifyError(e, 'ساخت فایل اکسل انجام نشد.'); }
 };
-const MAX_PRESET_OPTIONS = 10000;
+const MAX_PRESET_OPTIONS = PRESET_LIMITS.options;
 const readPresetFile = async (file) => {
     try {
         const r = rowsToPreset(await readSpreadsheet(file));
         if (r.options.length > MAX_PRESET_OPTIONS) { notify(`فایل ${r.options.length} گزینه دارد؛ هر لیست حداکثر ${MAX_PRESET_OPTIONS} گزینه می‌تواند داشته باشد.`, 'error'); return null; }
         return r;
     }
-    catch (e) { notify(e.code === 'xls' ? 'فرمت قدیمی xls پشتیبانی نمی‌شود. فایل را در اکسل با «Save As» و فرمت xlsx یا CSV ذخیره کنید.' : 'فایل خوانده نشد. یک فایل اکسل (xlsx) یا CSV انتخاب کنید.', 'error'); return null; }
+    catch (e) {
+        notify(e.code === 'xls' ? 'فرمت قدیمی xls پشتیبانی نمی‌شود. فایل را در اکسل با «Save As» و فرمت xlsx یا CSV ذخیره کنید.'
+            : e.code === 'enc' ? 'کدگذاری فایل CSV درست نیست و فارسی خراب می‌شود. در اکسل «Save As» را بزنید و «CSV UTF-8 (Comma delimited)» را انتخاب کنید، یا فایل را به‌صورت xlsx ذخیره کنید.'
+            : 'فایل خوانده نشد. یک فایل اکسل (xlsx) یا CSV انتخاب کنید.', 'error'); return null;
+    }
 };
 
 const GUIDE_SAMPLE = [{ display: 'تهران', print: 'Tehran', colValues: { 'مرکز استان': 'تهران' } }, { display: 'اصفهان', print: 'Isfahan', colValues: { 'مرکز استان': 'اصفهان' } }, { display: 'فارس', print: '', colValues: { 'مرکز استان': 'شیراز' } }];
@@ -1513,35 +1529,55 @@ const GUIDE_SAMPLE = [{ display: 'تهران', print: 'Tehran', colValues: { 'م
  * راهنمای ساختار فایل اکسل پیش از انتخاب فایل: نمونه‌ی جدول به شکل برگه‌ی اکسل، توضیح هر ستون، قواعد،
  * دانلود فایل نمونه و در پایین دکمه‌ی انتخاب فایل. اگر از داخل یک لیست باز شود، ستون‌های همان لیست را نشان می‌دهد.
  */
+const colLetter = (i) => { let n = i + 1; let out = ''; while (n > 0) { const m = (n - 1) % 26; out = String.fromCharCode(65 + m) + out; n = Math.floor((n - 1) / 26); } return out; };
 function ExcelImportGuideModal({ list, onFile, onClose }) {
     useEscape(onClose);
-    const existing = !!(list && list.options && list.options.length);
+    // سه حالت: ساخت لیست جدید از فایل | ورود به لیستی که گزینه دارد (افزودن/جایگزینی) | ورود به لیست خالی (مستقیم پر می‌شود)
+    const mode = !list ? 'new' : (list.options && list.options.length ? 'append' : 'empty');
+    const existing = mode === 'append';
+    const listName = list && list.title ? `«${list.title}»` : 'این لیست';
     const cols = list && list.cols && list.cols.length ? list.cols : (list ? [] : ['مرکز استان']);
-    const sampleOpts = existing ? list.options.slice(0, 3) : GUIDE_SAMPLE;
+    const sampleOpts = existing ? list.options.slice(0, 3) : GUIDE_SAMPLE.map(o => ({ ...o, colValues: cols.includes('مرکز استان') ? o.colValues : {} }));
     const rows = presetToRows({ cols, options: sampleOpts });
-    const letters = rows[0].map((_, i) => String.fromCharCode(65 + i));
+    const letters = rows[0].map((_, i) => colLetter(i));
     const colInfo = [
-        { l: 'A', title: 'نمایش در فرم', req: true, text: 'نامی که کاربر در فهرست کشویی فرم می‌بیند، مثلاً نام استان. هر ردیف یک گزینه است و این ستون نباید خالی باشد.' },
+        { l: 'A', title: 'نمایش در فرم', req: true, text: 'نامی که کاربر در فهرست کشویی فرم می‌بیند، مثلاً نام استان. هر ردیف یک گزینه است و این ستون نباید خالی باشد (ردیفی که A خالی دارد کل ردیف رد می‌شود).' },
         { l: 'B', title: 'چاپ روی کارت', req: false, text: 'اگر می‌خواهید روی کارت متن دیگری چاپ شود (مثلاً نام انگلیسی). خالی بماند، همان متن ستون A چاپ می‌شود.' },
-        ...cols.map((c, i) => ({ l: String.fromCharCode(67 + i), title: c, req: false, text: 'ستون وابسته: مقداری که با انتخاب هر گزینه، در فیلدهای متصل به این لیست پر می‌شود.' })),
+        ...cols.map((c, i) => ({ l: colLetter(i + 2), title: c, req: false, text: 'ستون وابسته: مقداری که با انتخاب هر گزینه، در فیلدهای متصل به این لیست پر می‌شود (مثلاً مرکز استان در یک فیلد متنی).' })),
     ];
-    if (!cols.length) colInfo.push({ l: 'C…', title: 'ستون‌های وابسته', req: false, text: 'اختیاری. عنوان هر ستون اضافه در ردیف اول، نام یک ستون وابسته‌ی جدید می‌شود.' });
-    const download = () => downloadPresetXlsx({ title: list && list.title ? `${list.title} - نمونه` : 'نمونه لیست پایه', cols, options: existing ? [] : GUIDE_SAMPLE });
-    const rules = [
-        'ردیف اول، عنوان ستون‌ها باشد (دقیقاً مثل نمونه). اگر عنوان نگذارید، از ردیف اول به عنوان داده خوانده می‌شود و ستون‌های C به بعد «ستون ۱، ستون ۲ …» نام می‌گیرند.',
-        'فقط برگه‌ی (Sheet) اول فایل خوانده می‌شود. ستون یا سلول ادغام‌شده (Merge) نداشته باشد.',
-        'ردیف‌هایی که ستون A آن‌ها خالی است رد می‌شوند. نام تکراری فقط یک بار وارد می‌شود («ی/ي» و «ک/ك» یکسان حساب می‌شوند).',
-        'کدهایی که با صفر شروع می‌شوند (مثل ۰۲۱): پیش از وارد کردن، قالب آن ستون را در اکسل Text کنید؛ وگرنه اکسل صفر اول را حذف می‌کند.',
-        <>فرمت فایل: xlsx یا CSV (با کدگذاری <span className="latin-digits" dir="ltr">UTF-8</span>). فرمت قدیمی xls پذیرفته نمی‌شود. حداکثر {MAX_PRESET_OPTIONS.toLocaleString('en-US')} ردیف.</>,
-        existing ? 'بعد از انتخاب فایل می‌پرسیم گزینه‌ها به لیست فعلی «اضافه» شوند یا لیست «جایگزین» شود. تا «ذخیره» را نزنید چیزی ثبت نمی‌شود.' : 'بعد از انتخاب فایل، گزینه‌ها در فرم ویرایش نمایش داده می‌شوند تا بررسی کنید. تا «ذخیره» را نزنید چیزی ثبت نمی‌شود.',
+    if (!cols.length) colInfo.push({ l: 'C…', title: 'ستون‌های وابسته', req: false, text: `اختیاری. عنوان هر ستون اضافه در ردیف اول، نام یک ستون وابسته‌ی جدید می‌شود (حداکثر ${PRESET_LIMITS.cols} ستون).` });
+    const download = () => downloadPresetXlsx({ title: list && list.title ? `${list.title} - نمونه` : 'نمونه لیست پایه', cols, options: existing ? [] : sampleOpts });
+    const latin = (t) => <span className="latin-digits" dir="ltr">{t}</span>;
+    const faN = (n) => toPersianNum(n.toLocaleString('en-US'));
+    const structureRules = [
+        'فقط برگه‌ی (Sheet) اول فایل خوانده می‌شود، حتی اگر پنهان باشد. برگه‌های بعدی نادیده گرفته می‌شوند.',
+        <>ردیف اول باید عنوان ستون‌ها باشد. ردیف اول فقط وقتی «عنوان» حساب می‌شود که خانه‌ی A آن یکی از این کلمه‌ها باشد: <b>نمایش در فرم، نمایش، عنوان، نام، گزینه، مقدار</b> (یا {latin('display, title, name, option, value, label')}) یا خانه‌ی B آن «چاپ روی کارت» باشد. در غیر این صورت ردیف اول یک گزینه‌ی معمولی خوانده می‌شود؛ پس عنوانی مثل «استان» به‌عنوان گزینه وارد می‌شود. برعکس، اگر نخستین گزینه‌ی واقعی شما یکی از همین کلمه‌هاست، حتماً ردیف عنوان بگذارید. پیام بعد از ورود می‌گوید ردیف اول چگونه خوانده شد.</>,
+        'ستون‌های C به بعد، ستون وابسته‌اند و نامشان از ردیف عنوان می‌آید. اگر عنوان نداشته باشند «ستون ۱، ستون ۲ …» نام می‌گیرند؛ عنوان تکراری با شماره‌ی «(۲)» یکتا می‌شود.',
+        'ردیف کاملاً خالی و ردیفی که خانه‌ی A آن خالی است رد می‌شود. سلول ادغام‌شده (Merge) نداشته باشید: مقدار فقط در خانه‌ی بالا-چپ می‌آید و بقیه خالی خوانده می‌شوند.',
     ];
+    const contentRules = [
+        'گزینه‌ی تکراری فقط یک بار وارد می‌شود (اولین ردیف می‌ماند). تکراری بودن از روی ستون A و بدون توجه به فاصله‌ی اضافه، حروف بزرگ/کوچک انگلیسی و «ی/ي» و «ک/ك» تشخیص داده می‌شود.',
+        'متن هر خانه همان‌طور که نوشته‌اید ذخیره می‌شود (حروف عربی عوض نمی‌شوند). فقط فاصله‌ی ابتدا و انتها حذف و چند فاصله یا خط جدید داخل یک خانه به یک فاصله تبدیل می‌شود.',
+        'مقدار واقعی خانه خوانده می‌شود، نه شکل نمایش آن: ۱٬۰۰۰ به «1000» و تاریخ به عدد سریال اکسل (مثل 46143) تبدیل می‌شود؛ TRUE/FALSE همان‌طور می‌آید و فرمول، آخرین نتیجه‌ی محاسبه است. تاریخ، کد با صفر اول (۰۲۱)، کد ملی و اعداد بیش از ۱۵ رقم را پیش از تایپ، قالب Text کنید و به‌صورت متن بنویسید.',
+        `حدود هر لیست: حداکثر ${faN(PRESET_LIMITS.options)} گزینه (ردیف)، ${faN(PRESET_LIMITS.cols)} ستون وابسته؛ طول متن ستون‌های A و B و هر مقدار وابسته حداکثر ${faN(PRESET_LIMITS.text)} نویسه و عنوان هر ستون ${faN(PRESET_LIMITS.colTitle)} نویسه. بیشتر از این‌ها کوتاه یا نادیده گرفته می‌شود و پیام بعد از ورود تعداد آن را می‌گوید.`,
+    ];
+    const fileRules = [
+        <>فرمت فایل: {latin('xlsx')} یا {latin('CSV')}. فرمت‌های {latin('xls')} قدیمی، {latin('ods')} و Numbers پذیرفته نمی‌شود (در Google Sheets: File ← Download ← Microsoft Excel {latin('(.xlsx)')}).</>,
+        <>فایل {latin('CSV')} باید {latin('UTF-8')} باشد: در اکسل «Save As» و نوع <b>{latin('CSV UTF-8 (Comma delimited)')}</b> را انتخاب کنید. جداکننده‌ی «,» یا «;» یا Tab خودکار تشخیص داده می‌شود. اگر کدگذاری درست نباشد و فارسی خراب شود، فایل رد می‌شود.</>,
+    ];
+    const afterRules = {
+        new: ['نام فایل (بدون پسوند) عنوان لیست می‌شود و شناسه‌ی لیست از حروف انگلیسی و عدد نام فایل ساخته می‌شود؛ اگر نام فایل فارسی باشد شناسه‌ی خودکار (مثل LIST_…) داده می‌شود. هر دو را می‌توانید قبل از ذخیره عوض کنید؛ شناسه‌ی تکراری پذیرفته نمی‌شود.', 'گزینه‌ها در فرم ویرایش نمایش داده می‌شوند تا بررسی کنید. تا «ذخیره» را نزنید چیزی ثبت نمی‌شود.'],
+        append: [`چون ${listName} الان گزینه دارد، بعد از انتخاب فایل می‌پرسیم: «افزودن» (فقط گزینه‌های با نامِ جدید اضافه می‌شوند؛ گزینه‌های موجود دست‌نخورده می‌مانند و «چاپ روی کارت» و مقدارهای وابسته‌ی آن‌ها در فایل نادیده گرفته می‌شود؛ ستون‌های وابسته‌ی با عنوان تازه اضافه می‌شوند) یا «جایگزینی کامل» (همه‌ی گزینه‌ها و ستون‌های وابسته‌ی فعلی با فایل عوض می‌شوند).`, 'تا «ذخیره» را نزنید چیزی ثبت نمی‌شود.'],
+        empty: [`${listName} هنوز گزینه‌ای ندارد؛ گزینه‌های فایل مستقیم در همین لیست قرار می‌گیرند (ستون‌های وابسته‌ی فایل به ستون‌های فعلی اضافه می‌شود). عنوان و شناسه‌ی لیست تغییر نمی‌کند. تا «ذخیره» را نزنید چیزی ثبت نمی‌شود.`],
+    }[mode];
+    const Rules = ({ title, items }) => (<div className="mb-4"><h4 className="text-xs font-bold text-slate-800 mb-1.5">{title}</h4><ul className="space-y-1.5">{items.map((r, i) => <li key={i} className="flex gap-2 text-xs text-slate-700 leading-6"><Icon name="CircleCheck" className="w-4 h-4 text-emerald-600 shrink-0 mt-1" /><span>{r}</span></li>)}</ul></div>);
     // روی body رسم می‌شود: داخل پنجره‌ی شیشه‌ای (backdrop-filter) موقعیت fixed نسبت به همان پنجره حساب می‌شد و راهنما بریده می‌شد
     return ReactDOM.createPortal(
         <div className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
             <div role="dialog" aria-modal="true" aria-labelledby="xl-guide-title" className="glass-strong rounded-3xl p-5 sm:p-6 w-full max-w-3xl my-8 sm:my-auto shadow-2xl">
                 <div className="flex justify-between items-start gap-3 mb-4">
-                    <div><h3 id="xl-guide-title" className="text-lg font-bold text-slate-800 flex items-center gap-2"><Icon name="FileSpreadsheet" className="w-5 h-5 text-emerald-700" /> {existing ? `ورود از اکسل به «${list.title}»` : 'ساخت لیست پایه از فایل اکسل'}</h3>
-                        <p className="text-sm text-slate-500 mt-1">فایل اکسل را با این ساختار آماده کنید. ساده‌ترین راه: فایل نمونه را دانلود کنید، ردیف‌های نمونه را پاک کنید و داده‌های خودتان را جایگزین کنید.</p></div>
+                    <div><h3 id="xl-guide-title" className="text-lg font-bold text-slate-800 flex items-center gap-2"><Icon name="FileSpreadsheet" className="w-5 h-5 text-emerald-700" /> {list ? `ورود از اکسل به ${listName}` : 'ساخت لیست پایه از فایل اکسل'}</h3>
+                        <p className="text-sm text-slate-500 mt-1">فایل اکسل را با این ساختار آماده کنید. ساده‌ترین راه: فایل نمونه را دانلود کنید{existing ? ' (فقط ردیف عنوان ستون‌های همین لیست را دارد)، ردیف‌های خودتان را زیر آن بنویسید' : '، ردیف‌های نمونه را پاک کنید و داده‌های خودتان را جایگزین کنید'}.</p></div>
                     <button onClick={onClose} aria-label="بستن" className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full shrink-0"><Icon name="X" className="w-4 h-4" /></button>
                 </div>
 
@@ -1562,9 +1598,13 @@ function ExcelImportGuideModal({ list, onFile, onClose }) {
                         <div className="min-w-0"><p className="text-sm font-bold text-slate-800">{ci.title} <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${ci.req ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-500'}`}>{ci.req ? 'الزامی' : 'اختیاری'}</span></p><p className="text-xs text-slate-600 mt-0.5">{ci.text}</p></div>
                     </div>
                 ))}</div>
-                {existing && cols.length > 0 && <p className="text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-3 mb-4">عنوان ستون‌های وابسته در فایل باید دقیقاً همین‌ها باشد: {cols.map(c => `«${c}»`).join('، ')}. ستونی با عنوان دیگر، به‌عنوان ستون وابسته‌ی جدید اضافه می‌شود.</p>}
+                {list && cols.length > 0 && <p className="text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-3 mb-4">عنوان ستون‌های وابسته در فایل باید دقیقاً همین‌ها باشد: {cols.map(c => `«${c}»`).join('، ')}. ستونی با عنوان دیگر، به‌عنوان ستون وابسته‌ی جدید اضافه می‌شود.</p>}
 
-                <ul className="space-y-1.5 mb-5">{rules.map((r, i) => <li key={i} className="flex gap-2 text-xs text-slate-700"><Icon name="CircleCheck" className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" /><span>{r}</span></li>)}</ul>
+                <Rules title="ساختار فایل" items={structureRules} />
+                <Rules title="محتوای خانه‌ها و محدودیت‌ها" items={contentRules} />
+                <Rules title="فرمت فایل" items={fileRules} />
+                <Rules title="بعد از انتخاب فایل" items={afterRules} />
+                <div className="mb-5" />
 
                 <div className="flex flex-col sm:flex-row gap-2">
                     <label className="flex-1 cursor-pointer flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold focus-within:ring-4 focus-within:ring-emerald-200"><Icon name="Upload" className="w-5 h-5" /> انتخاب فایل اکسل و ورود
@@ -1598,18 +1638,21 @@ function PresetsManagerModal({ onClose }) {
         const old = ed.cols[i];
         return { ...ed, cols: ed.cols.map((x, idx) => idx === i ? name : x), options: ed.options.map(o => { const cv = { ...(o.colValues || {}) }; if (old in cv) { cv[name] = cv[old]; delete cv[old]; } return { ...o, colValues: cv }; }) };
     });
-    const summary = (r) => [`${r.options.length} گزینه`, r.cols.length ? `${r.cols.length} ستون وابسته` : '', r.dup ? `${r.dup} تکراری کنار گذاشته شد` : '', r.empty ? `${r.empty} ردیف بدون نام رد شد` : ''].filter(Boolean).join('، ');
+    const summary = (r) => [`${r.options.length} گزینه`, r.cols.length ? `${r.cols.length} ستون وابسته` : '', r.dup ? `${r.dup} تکراری کنار گذاشته شد` : '', r.empty ? `${r.empty} ردیف بدون نام رد شد` : '',
+        r.cut ? `${r.cut} متن بلندتر از ${PRESET_LIMITS.text} نویسه کوتاه شد` : '', r.colsDropped ? `${r.colsDropped} ستون اضافه (بیش از ${PRESET_LIMITS.cols}) نادیده گرفته شد` : '',
+        r.header ? 'ردیف اول به‌عنوان عنوان ستون‌ها خوانده شد' : 'ردیف اول عنوان نبود و به‌عنوان یک گزینه خوانده شد'].filter(Boolean).join('، ');
+    const importNote = (r, text) => notify(text, (r.cut || r.colsDropped) ? 'warning' : 'success', 9000);
 
     const importAsNew = async (file) => {
         const r = await readPresetFile(file); if (!r) return;
         if (!r.options.length) return notify('در فایل گزینه‌ای پیدا نشد. ستون اول باید نام گزینه‌ها باشد.', 'warning');
         startEdit({ preset_key: keyFromFileName(file.name), title: String(file.name).replace(/\.[^.]+$/, ''), options: r.options, cols: r.cols });
-        notify(`از فایل خوانده شد: ${summary(r)}. شناسه و عنوان را بررسی و «ذخیره» را بزنید.`, 'success');
+        importNote(r, `از فایل خوانده شد: ${summary(r)}. شناسه و عنوان را بررسی و «ذخیره» را بزنید.`);
     };
     const importIntoEditing = async (file) => {
         const r = await readPresetFile(file); if (!r) return;
         if (!r.options.length) return notify('در فایل گزینه‌ای پیدا نشد. ستون اول باید نام گزینه‌ها باشد.', 'warning');
-        if (!editing.options.length) { setEditing(ed => ({ ...ed, options: r.options, cols: [...new Set([...(ed.cols || []), ...r.cols])] })); notify(`از فایل خوانده شد: ${summary(r)}.`, 'success'); return; }
+        if (!editing.options.length) { setEditing(ed => ({ ...ed, options: r.options, cols: [...new Set([...(ed.cols || []), ...r.cols])] })); importNote(r, `از فایل خوانده شد: ${summary(r)}.`); return; }
         setPending({ ...r, fileName: file.name });
     };
     const applyPending = (mode) => {

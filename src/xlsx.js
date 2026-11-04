@@ -72,7 +72,12 @@ function readCsv(text) {
 /** فایل انتخاب‌شده (xlsx یا csv) → آرایه‌ای از ردیف‌ها (هر ردیف آرایه‌ای از متن). */
 export async function readSpreadsheet(file) {
     const name = (file.name || '').toLowerCase();
-    if (name.endsWith('.csv') || name.endsWith('.txt') || file.type === 'text/csv') return readCsv(await file.text());
+    if (name.endsWith('.csv') || name.endsWith('.txt') || file.type === 'text/csv') {
+        const text = await file.text();
+        // فایل CSV با کدگذاری ANSI/Windows-1256 در UTF-8 نویسه‌ی جایگزین (�) می‌سازد؛ به‌جای وارد کردن متن خراب، رد می‌شود
+        if (text.includes('\uFFFD')) { const e = new Error('encoding'); e.code = 'enc'; throw e; }
+        return readCsv(text);
+    }
     if (name.endsWith('.xls')) { const e = new Error('xls'); e.code = 'xls'; throw e; }
     try { return await readXlsx(await file.arrayBuffer()); }
     catch (err) { const e = new Error('bad file'); e.code = 'bad'; throw e; }
