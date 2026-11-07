@@ -139,6 +139,7 @@ const applyLook = (c, W, H, o) => {
 };
 const faceImage = (tex, img, o) => {
     const W = img.width, H = img.height; const s = scratch(W, H); const c = s.getContext('2d'); c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1; c.clearRect(0, 0, W, H); c.drawImage(img, 0, 0, W, H);
+    if (o.dofImg) { c.globalAlpha = o.dofMix; c.drawImage(o.dofImg, 0, 0, W, H); c.globalAlpha = 1; }
     applyLook(c, W, H, o);
     if (o.slot) { // سوراخ آویز (پانچ) بالای کارت؛ با کارت جابه‌جا می‌شود چون جزو بافت است
         const sw = W * 0.15, sh = W * 0.03, sx = W / 2 - sw / 2, sy = W * 0.05; roundRectPath(c, sx, sy, sw, sh, sh / 2); const g = c.createLinearGradient(0, sy, 0, sy + sh); g.addColorStop(0, 'rgba(8,10,24,0.92)'); g.addColorStop(1, 'rgba(30,34,60,0.7)'); c.fillStyle = g; c.fill();
@@ -176,7 +177,7 @@ const drawCard = (ctx, cam, tex, backTex, pose, o = {}) => {
     // (قبل از خود کارت کشیده می‌شود تا کارت روی آن بنشیند)
     // روی صفحه
     let mnx = 1e9, mxx = -1e9; facePoly.forEach(q => { mnx = Math.min(mnx, q[0]); mxx = Math.max(mxx, q[0]); }); const cols = clamp(Math.round((mxx - mnx) / 55), 5, 18), rows = clamp(Math.round(cols * tex.ratio * 1.2), 4, 14);
-    const img = faceImage(visTex, o.dof ? dofOf(visTex) : visTex.c, o);
+    const dm = o.dofMix ?? (o.dof ? 1 : 0); const img = faceImage(visTex, visTex.c, { ...o, dofImg: dm > 0.01 ? dofOf(visTex) : null, dofMix: dm });
     const sgn = frontVisible ? 1 : -1;
     warp(ctx, img, (u, v) => project(cam, X((u - 0.5) * cw * sgn, (v - 0.5) * ch, faceZ)), cols, rows);
     // لبه‌ی روشن و هموارکننده
@@ -268,20 +269,20 @@ const sceneDuo = (ctx, cam, spec, t, S, neon) => {
     // (خارج از دید)، سپس از چپ و از «پشتِ» کارت دیگر به جایگاه عقب می‌رسد؛ کارت عقب هم هم‌زمان جلو می‌آید.
     const slotFront = { x: cam.cx - S.w * 0.05, y: yC + cardH * 0.04, z: f * 0.97, yaw: -27 + sway * 6, pitch: 9 - sway * 1.5, roll: -2, w: cw0 };
     const slotBack = { x: cam.cx + S.w * 0.19, y: yC - S.h * 0.07, z: f * 1.2, yaw: 34 - sway * 3, pitch: 6, roll: 2, w: cw0 * 0.86 };
-    const sw = seg(t, 0.46, 0.84); const prog = easeInOut(seg(sw, 0.42, 0.9)); const offX = cam.cx - S.w * 0.7;
+    const sw = seg(t, 0.46, 0.84); const prog = easeInOut(seg(sw, 0.42, 0.9)); /* کارت عقب به‌محض خروج کارت جلو فوکوس می‌گیرد */ const focus = easeInOut(seg(sw, 0.12, 0.38)); const offX = cam.cx - S.w * 0.7;
     const outK = easeInOut(seg(sw, 0, 0.4)), inK = easeInOut(seg(sw, 0.55, 1)), ek = easeInOut(seg(sw, 0.3, 0.52)), behind = easeInOut(seg(sw, 0.35, 0.6));
     const pf = { x: sw < 0.5 ? lerp(slotFront.x, offX, outK) : lerp(offX, slotBack.x, inK), y: lerp(slotFront.y, slotBack.y, ek), z: lerp(slotFront.z, slotBack.z, ek) + f * 0.3 * Math.sin(Math.PI * inK), yaw: lerp(slotFront.yaw, slotBack.yaw, ek), pitch: lerp(slotFront.pitch, slotBack.pitch, ek), roll: lerp(slotFront.roll, slotBack.roll, ek), w: lerp(slotFront.w, slotBack.w, ek) };
     const pb = { x: lerp(slotBack.x, slotFront.x, prog), y: lerp(slotBack.y, slotFront.y, prog), z: lerp(slotBack.z, slotFront.z, prog), yaw: lerp(slotBack.yaw, slotFront.yaw, prog), pitch: lerp(slotBack.pitch, slotFront.pitch, prog), roll: lerp(slotBack.roll, slotFront.roll, prog), w: lerp(slotBack.w, slotFront.w, prog) };
     // ورود: کارت جلو از پایین و با چرخش می‌آید
     pf.y += (1 - easeOut(seg(t, 0, 0.16))) * H * 0.35; pf.yaw += (1 - A) * -55; pb.x += (1 - easeOut(seg(t, 0.06, 0.3))) * W * 0.5; const fadeB = easeOut(seg(t, 0.06, 0.2));
     const items = [
-        { tex: front, back: null, p: pf, dim: lerp(0, 0.2, behind), dof: behind > 0.7, alpha: fade, g: 0.2 + 0.6 * seg(t, 0.12, 0.5), mat: spec.material },
-        { tex: back, back: null, p: pb, dim: lerp(0.2, 0, prog), dof: prog < 0.3, alpha: fadeB, g: 0.2 + 0.6 * seg(t, 0.55, 0.9), mat: spec.material },
+        { tex: front, back: null, p: pf, dim: lerp(0, 0.2, behind), dofMix: behind, alpha: fade, g: 0.2 + 0.6 * seg(t, 0.12, 0.5), mat: spec.material },
+        { tex: back, back: null, p: pb, dim: lerp(0.2, 0, focus), dofMix: 1 - focus, alpha: fadeB, g: 0.2 + 0.6 * seg(t, 0.55, 0.9), mat: spec.material },
     ].map(it => ({ ...it, z: it.p.z })).sort((a, b) => b.z - a.z);
     const ctr = (it) => ({ pos: at(cam, it.p.x, it.p.y + bob * (it === items[0] ? 1 : -0.6), it.p.z), yaw: it.p.yaw, pitch: it.p.pitch, roll: it.p.roll, w: it.p.w, alpha: it.alpha });
     items.forEach(it => { const pose = ctr(it); pose.alpha = it.alpha; floorShadow(ctx, cam, pose, it.tex, floorY, neon ? 0.8 : 1); });
     { const lc = reflectionLayer(W, H); items.forEach(it => { const pose = ctr(it); pose.dimR = it.dim; reflectInto(lc, cam, it.tex, null, pose, floorY); }); flushReflections(ctx, W, H, floorScreen, neon ? 0.5 : 0.4, cardH * 0.7); }
-    items.forEach(it => { const pose = ctr(it); drawCard(ctx, cam, it.tex, null, pose, { material: it.mat, gloss: it.g, dim: it.dim, dof: it.dof, alpha: it.alpha, rim: neon, glowColor: spec.pal.glow, sheen: holo + it.p.yaw / 360 }); });
+    items.forEach(it => { const pose = ctr(it); drawCard(ctx, cam, it.tex, null, pose, { material: it.mat, gloss: it.g, dim: it.dim, dofMix: it.dofMix, alpha: it.alpha, rim: neon, glowColor: spec.pal.glow, sheen: holo + it.p.yaw / 360 }); });
     if (neon) sparks(ctx, W, H, spec, t, true);
 };
 const sceneFan = (ctx, cam, spec, t, S) => {
