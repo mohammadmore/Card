@@ -140,6 +140,10 @@ const applyLook = (c, W, H, o) => {
 const faceImage = (tex, img, o) => {
     const W = img.width, H = img.height; const s = scratch(W, H); const c = s.getContext('2d'); c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1; c.clearRect(0, 0, W, H); c.drawImage(img, 0, 0, W, H);
     applyLook(c, W, H, o);
+    if (o.slot) { // سوراخ آویز (پانچ) بالای کارت؛ با کارت جابه‌جا می‌شود چون جزو بافت است
+        const sw = W * 0.15, sh = W * 0.03, sx = W / 2 - sw / 2, sy = W * 0.05; roundRectPath(c, sx, sy, sw, sh, sh / 2); const g = c.createLinearGradient(0, sy, 0, sy + sh); g.addColorStop(0, 'rgba(8,10,24,0.92)'); g.addColorStop(1, 'rgba(30,34,60,0.7)'); c.fillStyle = g; c.fill();
+        c.save(); roundRectPath(c, sx, sy, sw, sh, sh / 2); c.clip(); c.strokeStyle = 'rgba(0,0,0,0.55)'; c.lineWidth = sh * 0.5; c.stroke(); c.restore(); roundRectPath(c, sx - 1, sy - 1, sw + 2, sh + 2, sh / 2 + 1); c.strokeStyle = 'rgba(255,255,255,0.45)'; c.lineWidth = 1.4; c.stroke();
+    }
     if (o.dim) { c.fillStyle = `rgba(4,6,18,${o.dim})`; c.fillRect(0, 0, W, H); }
     c.globalCompositeOperation = 'destination-in'; roundRectPath(c, 0, 0, W, H, tex.r * W / tex.w); c.fillStyle = '#000'; c.fill(); c.globalCompositeOperation = 'source-over';
     return s;
@@ -257,19 +261,21 @@ const sceneDuo = (ctx, cam, spec, t, S, neon) => {
     const { front, back, W, H } = spec; const f = cam.f; const cw0 = baseCard(S, front.ratio, neon ? 0.68 : 0.70);
     const cardH = cw0 * front.ratio; const yC = S.y + S.h * 0.46; const floorScreen = yC + cardH * 0.64 + cardH * 0.04; const floorY = (floorScreen - cam.cy); backdrop(ctx, W, H, spec, neon ? 'neon' : 'float', t, floorScreen - cardH * 0.06);
     if (neon) neonGrid(ctx, cam, spec, floorY, t);
-    const A = easeOutBack(seg(t, 0, 0.16)), fade = easeOut(seg(t, 0, 0.08)), sway = Math.sin(t * TAU * 1.0), swap = easeInOut(seg(t, 0.5, 0.78));
+    const A = easeOutBack(seg(t, 0, 0.16)), fade = easeOut(seg(t, 0, 0.08)), sway = Math.sin(t * TAU * 1.0);
     const bob = Math.sin(t * TAU * 2) * cw0 * 0.012; const holo = spec.material === 'holo' ? t : 0;
-    // دو جایگاه: «جلو» و «عقب»؛ هنگام تعویض، کارت‌ها از دو طرف جابه‌جا می‌شوند
+    // دو جایگاه: «جلو» و «عقب». تعویض بدون عبور کارت‌ها از داخل هم: کارت جلو اول به بیرون-چپ می‌لغزد، پشت صحنه عمقش عوض می‌شود
+    // (خارج از دید)، سپس از چپ و از «پشتِ» کارت دیگر به جایگاه عقب می‌رسد؛ کارت عقب هم هم‌زمان جلو می‌آید.
     const slotFront = { x: cam.cx - S.w * 0.05, y: yC + cardH * 0.04, z: f * 0.97, yaw: -27 + sway * 6, pitch: 9 - sway * 1.5, roll: -2, w: cw0 };
     const slotBack = { x: cam.cx + S.w * 0.19, y: yC - S.h * 0.07, z: f * 1.2, yaw: 34 - sway * 3, pitch: 6, roll: 2, w: cw0 * 0.86 };
-    const arc = Math.sin(swap * Math.PI);
-    const mix = (a, b, k) => ({ x: lerp(a.x, b.x, k) + (a === slotFront ? -1 : 1) * arc * S.w * 0.16, y: lerp(a.y, b.y, k), z: lerp(a.z, b.z, k) + (a === slotFront ? 1 : -1) * arc * f * 0.05, yaw: lerp(a.yaw, b.yaw, k), pitch: lerp(a.pitch, b.pitch, k), roll: lerp(a.roll, b.roll, k), w: lerp(a.w, b.w, k) });
-    const pf = mix(slotFront, slotBack, swap), pb = mix(slotBack, slotFront, swap);
+    const sw = seg(t, 0.46, 0.84); const prog = easeInOut(seg(sw, 0.42, 0.9)); const offX = cam.cx - S.w * 0.7;
+    const outK = easeInOut(seg(sw, 0, 0.4)), inK = easeInOut(seg(sw, 0.55, 1)), ek = easeInOut(seg(sw, 0.3, 0.52)), behind = easeInOut(seg(sw, 0.35, 0.6));
+    const pf = { x: sw < 0.5 ? lerp(slotFront.x, offX, outK) : lerp(offX, slotBack.x, inK), y: lerp(slotFront.y, slotBack.y, ek), z: lerp(slotFront.z, slotBack.z, ek) + f * 0.3 * Math.sin(Math.PI * inK), yaw: lerp(slotFront.yaw, slotBack.yaw, ek), pitch: lerp(slotFront.pitch, slotBack.pitch, ek), roll: lerp(slotFront.roll, slotBack.roll, ek), w: lerp(slotFront.w, slotBack.w, ek) };
+    const pb = { x: lerp(slotBack.x, slotFront.x, prog), y: lerp(slotBack.y, slotFront.y, prog), z: lerp(slotBack.z, slotFront.z, prog), yaw: lerp(slotBack.yaw, slotFront.yaw, prog), pitch: lerp(slotBack.pitch, slotFront.pitch, prog), roll: lerp(slotBack.roll, slotFront.roll, prog), w: lerp(slotBack.w, slotFront.w, prog) };
     // ورود: کارت جلو از پایین و با چرخش می‌آید
     pf.y += (1 - easeOut(seg(t, 0, 0.16))) * H * 0.35; pf.yaw += (1 - A) * -55; pb.x += (1 - easeOut(seg(t, 0.06, 0.3))) * W * 0.5; const fadeB = easeOut(seg(t, 0.06, 0.2));
     const items = [
-        { tex: front, back: null, p: pf, dim: lerp(0, 0.2, swap), dof: swap > 0.7, alpha: fade, g: 0.2 + 0.6 * seg(t, 0.12, 0.5), mat: spec.material },
-        { tex: back, back: null, p: pb, dim: lerp(0.2, 0, swap), dof: swap < 0.3, alpha: fadeB, g: 0.2 + 0.6 * seg(t, 0.55, 0.9), mat: spec.material },
+        { tex: front, back: null, p: pf, dim: lerp(0, 0.2, behind), dof: behind > 0.7, alpha: fade, g: 0.2 + 0.6 * seg(t, 0.12, 0.5), mat: spec.material },
+        { tex: back, back: null, p: pb, dim: lerp(0.2, 0, prog), dof: prog < 0.3, alpha: fadeB, g: 0.2 + 0.6 * seg(t, 0.55, 0.9), mat: spec.material },
     ].map(it => ({ ...it, z: it.p.z })).sort((a, b) => b.z - a.z);
     const ctr = (it) => ({ pos: at(cam, it.p.x, it.p.y + bob * (it === items[0] ? 1 : -0.6), it.p.z), yaw: it.p.yaw, pitch: it.p.pitch, roll: it.p.roll, w: it.p.w, alpha: it.alpha });
     items.forEach(it => { const pose = ctr(it); pose.alpha = it.alpha; floorShadow(ctx, cam, pose, it.tex, floorY, neon ? 0.8 : 1); });
@@ -297,21 +303,38 @@ const sceneFan = (ctx, cam, spec, t, S) => {
     if (Lt) { ctx.save(); const a = project(cam, c3(cam, cards[0], 0.62)), b = project(cam, c3(cam, cards[2], -0.3)); ctx.globalCompositeOperation = 'lighter'; const g = ctx.createLinearGradient(a[0], a[1], b[0], b[1]); g.addColorStop(0, spec.pal.at(0, 0.6)); g.addColorStop(0.5, spec.pal.at(0.55 * seg(t, 0.2, 0.4), 0.7)); g.addColorStop(1, spec.pal.at(0, 0.6)); ctx.strokeStyle = g; ctx.lineWidth = cw0 * 0.02; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(a[0], a[1] - cw0 * 0.28); ctx.quadraticCurveTo((a[0] + b[0]) / 2, a[1] - cw0 * 0.62, b[0], b[1] - cw0 * 0.28); ctx.stroke(); ctx.restore(); }
 };
 const c3 = (cam, c, k) => [c.pose.pos[0] + k * c.pose.w * 0.5, c.pose.pos[1], c.pose.pos[2]];
+/** چندضلعی در مختصات محلی کارت (صفحه‌ی z=0) را با همان تبدیل کارت به صفحه می‌برد؛ پس سخت‌افزار با کارت حرکت می‌کند. */
+const projPoly = (cam, X, pts) => pts.map(([x, y]) => project(cam, X(x, y, 0)));
+const pathOf = (ctx, p) => { ctx.beginPath(); p.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); };
+const rrPts = (cx, cy, w, h, r) => outlineOf(w, h, r, 5).map(([x, y]) => [x + cx, y + cy]);
+const metalStroke = (ctx, p, lw) => { pathOf(ctx, p); ctx.lineJoin = 'round'; ctx.strokeStyle = '#475569'; ctx.lineWidth = lw; ctx.stroke(); ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = lw * 0.62; ctx.stroke(); ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = lw * 0.18; ctx.stroke(); };
 const sceneLanyard = (ctx, cam, spec, t, S) => {
-    const { front, back, W, H } = spec; const f = cam.f; const cw0 = baseCard(S, front.ratio, 0.78); const ch = cw0 * front.ratio;
+    const { front, back, W, H } = spec; const f = cam.f; const cw0 = baseCard(S, front.ratio, 0.9); const ch = cw0 * front.ratio;
     backdrop(ctx, W, H, spec, 'lanyard', t, null); const pal = spec.pal;
-    const drop = easeOutBack(seg(t, 0, 0.18)); const decay = Math.exp(-3.0 * seg(t, 0.12, 1)); const swing = Math.sin(seg(t, 0.1, 1) * TAU * 2.4) * 11 * decay;
-    const flipK = easeInOut(seg(t, 0.46, 0.72)); const yaw = -14 + flipK * 180 + Math.sin(t * TAU) * 4 + swing * 0.6; const roll = swing * 0.7;
-    const ax = cam.cx, ay = S.y + S.h * 0.02; const z = f * 1.0; const holeY = ay; const rise = (1 - drop) * -S.h * 0.5;
-    const pose = { pos: at(cam, ax, ay + rise, z), yaw, pitch: 2, roll, w: cw0, pivot: [0, -ch / 2 + cw0 * 0.045], alpha: easeOut(seg(t, 0, 0.06)) };
-    // بند
-    const sx = swing * 0.9; const topY = -40; const clipX = ax + sx * 0.5, clipY = ay + rise + cw0 * 0.0;
-    ctx.save(); const strapW = cw0 * 0.09; [-1, 1].forEach(sd => { const x0 = ax + sd * W * 0.17, x1 = clipX + sd * cw0 * 0.018; const g = ctx.createLinearGradient(x0, 0, x1, clipY); g.addColorStop(0, pal.at(1, 0.34)); g.addColorStop(1, pal.at(1, 0.26)); ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x0 - strapW / 2, topY); ctx.lineTo(x0 + strapW / 2, topY); ctx.lineTo(x1 + strapW * 0.18, clipY); ctx.lineTo(x1 - strapW * 0.18, clipY); ctx.closePath(); ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0 - strapW * 0.3, topY); ctx.lineTo(x1 - strapW * 0.1, clipY); ctx.stroke(); }); ctx.restore();
+    const drop = easeOutBack(seg(t, 0, 0.18)); const decay = Math.exp(-3.0 * seg(t, 0.12, 1)); const swing = Math.sin(seg(t, 0.1, 1) * TAU * 2.4) * 9 * decay;
+    const flipK = easeInOut(seg(t, 0.46, 0.72)); const yaw = -14 + flipK * 180 + Math.sin(t * TAU) * 4; const roll = swing;
+    // کل مجموعه (بند، گیره و کارت) یک پاندول سخت است که از نقطه‌ای بالای قاب آویزان شده
+    const rise = (1 - drop) * -S.h * 0.55; const topY = S.y + S.h * 0.02; const pivY = -cw0 * 0.45; const Lpx = topY - pivY;
+    const pose = { pos: at(cam, cam.cx, pivY + rise, f), yaw, pitch: 2, roll, w: cw0, pivot: [0, -ch / 2 - Lpx], alpha: easeOut(seg(t, 0, 0.06)) };
+    const X = xformOf(pose); const sc = f / pose.pos[2]; const lw = cw0 * 0.02 * sc; const slotY = -ch / 2 + cw0 * 0.065;
     const holo = spec.material === 'holo' ? t : 0;
-    drawCard(ctx, cam, front, back, pose, { material: spec.material, gloss: 0.1 + 0.9 * seg(t, 0.25, 0.8), alpha: pose.alpha, dropShadow: { dx: 26, dy: 40, blur: 46, a: 0.34 }, sheen: holo + yaw / 360 });
-    // گیره‌ی فلزی
-    ctx.save(); ctx.globalAlpha = pose.alpha; const cx = clipX, cy = clipY + cw0 * 0.045; const bw = cw0 * 0.1, bh = cw0 * 0.062; const mg = ctx.createLinearGradient(cx - bw, cy, cx + bw, cy + bh); mg.addColorStop(0, '#f8fafc'); mg.addColorStop(0.45, '#94a3b8'); mg.addColorStop(1, '#e2e8f0');
-    ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 4; roundRectPath(ctx, cx - bw / 2, cy - bh / 2, bw, bh, bh * 0.4); ctx.fillStyle = mg; ctx.fill(); ctx.shadowColor = 'transparent'; roundRectPath(ctx, cx - bw * 0.2, cy - bh * 0.22, bw * 0.4, bh * 0.44, bh * 0.2); ctx.fillStyle = 'rgba(30,41,59,0.55)'; ctx.fill(); ctx.restore();
+    const clasp = { cy: slotY - cw0 * 0.075 + cw0 * 0.012, w: cw0 * 0.1, h: cw0 * 0.17 }; const eyeY = clasp.cy - clasp.h / 2 - cw0 * 0.026;
+    ctx.save(); ctx.globalAlpha = pose.alpha;
+    // بند
+    { const ws = cw0 * 0.115, y0 = -ch / 2 - Lpx, y1 = eyeY - cw0 * 0.02; const strap = projPoly(cam, X, [[-ws / 2, y0], [ws / 2, y0], [ws / 2, y1], [-ws / 2, y1]]);
+      pathOf(ctx, strap); ctx.shadowColor = 'rgba(15,23,42,0.28)'; ctx.shadowBlur = 14; ctx.shadowOffsetX = 8; ctx.shadowOffsetY = 12; const g = ctx.createLinearGradient(strap[0][0], 0, strap[1][0], 0); g.addColorStop(0, pal.at(1, 0.3)); g.addColorStop(0.5, pal.at(1, 0.4)); g.addColorStop(1, pal.at(1, 0.3)); ctx.fillStyle = g; ctx.fill(); ctx.shadowColor = 'transparent';
+      [-0.36, 0.36].forEach(k => { const a = projPoly(cam, X, [[ws * k, y0], [ws * k, y1]]); ctx.beginPath(); ctx.moveTo(a[0][0], a[0][1]); ctx.lineTo(a[1][0], a[1][1]); ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = Math.max(1.5, lw * 0.18); ctx.stroke(); });
+      // نقطه‌چین دوخت وسط بند
+      const mid = projPoly(cam, X, [[0, y0], [0, y1]]); ctx.beginPath(); ctx.moveTo(mid[0][0], mid[0][1]); ctx.lineTo(mid[1][0], mid[1][1]); ctx.setLineDash([lw * 0.9, lw * 1.2]); ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = Math.max(1.5, lw * 0.14); ctx.stroke(); ctx.setLineDash([]);
+      // سردوخت فلزی
+      const cr = projPoly(cam, X, rrPts(0, y1 - cw0 * 0.012, ws * 1.12, cw0 * 0.05, cw0 * 0.014)); pathOf(ctx, cr); const cg = ctx.createLinearGradient(cr[0][0], 0, cr[2][0], 0); cg.addColorStop(0, '#f1f5f9'); cg.addColorStop(0.5, '#94a3b8'); cg.addColorStop(1, '#e2e8f0'); ctx.fillStyle = cg; ctx.fill(); ctx.strokeStyle = '#64748b'; ctx.lineWidth = 1.2; ctx.stroke(); }
+    ctx.restore();
+    drawCard(ctx, cam, front, back, pose, { material: spec.material, gloss: 0.1 + 0.9 * seg(t, 0.25, 0.8), alpha: pose.alpha, slot: true, dropShadow: { dx: 26, dy: 40, blur: 46, a: 0.34 }, sheen: holo + yaw / 360 });
+    // حلقه و گیره‌ی فلزی که از سوراخ کارت رد می‌شود (با کارت می‌چرخد)
+    ctx.save(); ctx.globalAlpha = pose.alpha;
+    metalStroke(ctx, projPoly(cam, X, outlineOf(cw0 * 0.052, cw0 * 0.052, cw0 * 0.026, 6).map(([x, y]) => [x, y + eyeY + cw0 * 0.003])), lw * 0.8);
+    ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 4; metalStroke(ctx, projPoly(cam, X, rrPts(0, clasp.cy, clasp.w, clasp.h, clasp.w * 0.5)), lw);
+    ctx.restore();
 };
 
 // ---------- لایه‌ی متن و QR ----------
@@ -332,7 +355,7 @@ const layoutOf = (kind, W, H) => {
     const tall = H / W > 1.3; return { stage: { x: 0, y: H * (tall ? 0.135 : 0.16), w: W, h: H * (tall ? 0.46 : 0.43) }, logo: { x: W / 2, y: H * 0.062, s: 104 * u }, badgeY: -1, nameY: H * (tall ? 0.665 : 0.69), rankY: H * (tall ? 0.725 : 0.75), dateY: H * (tall ? 0.77 : 0.795), qrY: H * (tall ? 0.86 : 0.875), qrS: H * (tall ? 0.058 : 0.07), unit: u };
 };
 const drawOverlay = (ctx, spec, ui, dark) => {
-    const { W, H, kind } = spec; const L = layoutOf(kind, W, H); const u = L.unit; const T = TEXTS[spec.lang] || TEXTS.en; const rtl = spec.lang === 'fa' || spec.lang === 'ar'; const tx = spec.texts; const pal = spec.pal;
+    const { W, H, kind } = spec; const L = layoutOf(kind, W, H); const u = L.unit; const T = { ...(TEXTS[spec.lang] || TEXTS.en), ...(spec.labels || {}) }; const rtl = spec.lang === 'fa' || spec.lang === 'ar'; const tx = spec.texts; const pal = spec.pal;
     const fg = dark ? '#ffffff' : '#0f172a', sub = dark ? 'rgba(255,255,255,0.74)' : 'rgba(15,23,42,0.66)'; ctx.save(); ctx.direction = rtl ? 'rtl' : 'ltr'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const appear = (a, b) => easeOut(seg(ui, a, b)); const slide = (a, b) => (1 - appear(a, b)) * 36 * u;
     // لوگو (در صحنه‌ی آویز، کنار بالا-چپ تا با بند برخورد نکند)
@@ -373,7 +396,7 @@ export const prepare = (input) => {
     const bg = input.bg || { mode: 'auto' }; spec.bgInfo = bg;
     let rgb; if (bg.mode === 'custom' && bg.c1) rgb = hexToRgb(bg.c1); else if (bg.mode === 'theme' && bg.theme) rgb = hexToRgb(bg.theme.c3); else rgb = dominantColor(input.front.c);
     if (bg.override) rgb = hexToRgb(bg.override);
-    spec.pal = palette(rgb); spec.qr = input.qr || null; spec.texts = input.texts || {}; spec.lang = input.lang || 'fa'; spec.material = input.material || 'gloss'; spec.kind = input.kind || 'story';
+    spec.pal = palette(rgb); spec.qr = input.qr || null; spec.texts = input.texts || {}; spec.labels = input.labels || {}; spec.lang = input.lang || 'fa'; spec.material = input.material || 'gloss'; spec.kind = input.kind || 'story';
     return spec;
 };
 /**

@@ -311,7 +311,21 @@ function sanitize_poster($p, array $tenant): array {
     $ids = array_map(fn($f) => is_array($f) ? (string)($f['id'] ?? '') : '', is_array($tenant['fields'] ?? null) ? $tenant['fields'] : []);
     $hide = array_values(array_unique(array_filter(array_map('strval', is_array($p['hideFields'] ?? null) ? $p['hideFields'] : []), fn($id) => in_array($id, $ids, true))));
     $tags = mb_substr(trim(preg_replace('/\s+/u', ' ', preg_replace('/[^\p{L}\p{N}_#\s]/u', '', (string)($p['hashtags'] ?? '')))), 0, 300);
-    return ['enabled' => !empty($p['enabled']) && ($tenant['cardLayout'] ?? 'double') === 'double', 'scenes' => $scenes, 'defaultScene' => $def,
+    $music = [];
+    foreach (array_slice(is_array($p['music'] ?? null) ? $p['music'] : [], 0, 3) as $m) {
+        if (!is_array($m)) continue; $u = trim((string)($m['url'] ?? ''));
+        if (!preg_match('#^uploads/audio/[a-f0-9]{32}\.(mp3|m4a|ogg|wav)$#', $u)) continue;
+        $music[] = ['name' => mb_substr(trim((string)($m['name'] ?? '')) ?: 'موسیقی', 0, 60), 'url' => $u];
+    }
+    $texts = [];
+    foreach (['fa', 'en', 'ar', 'tr'] as $lg) {
+        $row = is_array($p['texts'][$lg] ?? null) ? $p['texts'][$lg] : [];
+        foreach (['promoted', 'newCard', 'scan', 'captionPromo', 'captionNew'] as $k) {
+            $v = mb_substr(trim(preg_replace('/\s+/u', ' ', (string)($row[$k] ?? ''))), 0, 160);
+            if ($v !== '') $texts[$lg][$k] = $v;
+        }
+    }
+    return ['music' => $music, 'texts' => $texts ?: new stdClass(), 'enabled' => !empty($p['enabled']) && ($tenant['cardLayout'] ?? 'double') === 'double', 'scenes' => $scenes, 'defaultScene' => $def,
         'bg' => ['mode' => $mode, 'c1' => $hex($bg['c1'] ?? null, '#6366f1'), 'c2' => $hex($bg['c2'] ?? null, '#a855f7'), 'image' => $img],
         'byRank' => $by ?: new stdClass(), 'hideFields' => $hide, 'video' => ($p['video'] ?? true) !== false, 'hashtags' => $tags];
 }
@@ -773,6 +787,18 @@ $routes = [
         $exts = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
         if (!isset($exts[$mime]) || @getimagesizefromstring($bin) === false) fail('فقط فایل تصویری (JPG/PNG/WEBP/GIF) مجاز است.');
         respond(['success' => true, 'url' => store_upload('images', $bin, $exts[$mime])]);
+    },
+    'POST upload_audio' => function () use ($input, $config) {
+        require_super();
+        $bin = decode_data_url(in_raw($input, 'file'), (int)($config['max_audio_bytes'] ?? 4194304));
+        $h = substr($bin, 0, 12);
+        $ext = null;
+        if (str_starts_with($h, 'ID3') || (strlen($h) > 1 && ord($h[0]) === 0xFF && (ord($h[1]) & 0xE0) === 0xE0)) $ext = 'mp3';
+        elseif (substr($h, 4, 4) === 'ftyp') $ext = 'm4a';
+        elseif (str_starts_with($h, 'OggS')) $ext = 'ogg';
+        elseif (str_starts_with($h, 'RIFF') && substr($h, 8, 4) === 'WAVE') $ext = 'wav';
+        if ($ext === null) fail('فقط فایل صوتی معتبر (MP3/M4A/OGG/WAV) مجاز است.');
+        respond(['success' => true, 'url' => store_upload('audio', $bin, $ext)]);
     },
     'POST upload_font' => function () use ($input, $config) {
         require_super();
