@@ -306,6 +306,8 @@ function sanitize_poster($p, array $tenant): array {
     $mode = in_array($bg['mode'] ?? '', ['auto', 'theme', 'custom'], true) ? $bg['mode'] : 'auto';
     $img = trim((string)($bg['image'] ?? ''));
     if ($img !== '' && !valid_image_url($img)) fail_field('تصویر پس‌زمینه‌ی پوستر نامعتبر است. یک فایل آپلود کنید یا لینک https وارد کنید.', 'poster.bg.image');
+    $vid = trim((string)($bg['video'] ?? ''));
+    if ($vid !== '' && !preg_match('#^uploads/video/[a-f0-9]{32}\.(mp4|webm)$#', $vid)) $vid = '';
     $by = [];
     foreach (array_slice(is_array($p['byRank'] ?? null) ? $p['byRank'] : [], 0, 60, true) as $k => $v) { $k = mb_substr(trim((string)$k), 0, 200); if ($k !== '' && is_string($v) && preg_match('/^#[0-9a-fA-F]{6}$/', $v)) $by[$k] = $v; }
     $ids = array_map(fn($f) => is_array($f) ? (string)($f['id'] ?? '') : '', is_array($tenant['fields'] ?? null) ? $tenant['fields'] : []);
@@ -333,7 +335,7 @@ function sanitize_poster($p, array $tenant): array {
     if (!preg_match('/^(none|celebration|calm|epic|org:[0-2])$/', $md) || (str_starts_with($md, 'org:') && (int)substr($md, 4) >= count($music))) $md = $music ? 'org:0' : 'celebration';
     return ['title' => $title, 'lines' => $lines, 'material' => in_array($p['material'] ?? '', $mats, true) ? $p['material'] : 'auto', 'showQr' => ($p['showQr'] ?? true) !== false, 'showName' => ($p['showName'] ?? true) !== false, 'showPrev' => ($p['showPrev'] ?? true) !== false,
         'allowPoster' => !empty($p['allowPoster']), 'musicDefault' => $md, 'music' => $music, 'texts' => $texts ?: new stdClass(), 'enabled' => !empty($p['enabled']) && ($tenant['cardLayout'] ?? 'double') === 'double', 'scenes' => $scenes, 'defaultScene' => $def,
-        'bg' => ['mode' => $mode, 'c1' => $hex($bg['c1'] ?? null, '#6366f1'), 'c2' => $hex($bg['c2'] ?? null, '#a855f7'), 'image' => $img],
+        'bg' => ['mode' => $mode, 'c1' => $hex($bg['c1'] ?? null, '#6366f1'), 'c2' => $hex($bg['c2'] ?? null, '#a855f7'), 'image' => $img, 'video' => $vid],
         'byRank' => $by ?: new stdClass(), 'hideFields' => $hide, 'video' => ($p['video'] ?? true) !== false, 'hashtags' => $tags];
 }
 function sanitize_theme($theme): array {
@@ -806,6 +808,14 @@ $routes = [
         elseif (str_starts_with($h, 'RIFF') && substr($h, 8, 4) === 'WAVE') $ext = 'wav';
         if ($ext === null) fail('فقط فایل صوتی معتبر (MP3/M4A/OGG/WAV) مجاز است.');
         respond(['success' => true, 'url' => store_upload('audio', $bin, $ext)]);
+    },
+    'POST upload_video' => function () use ($input, $config) {
+        require_super();
+        $bin = decode_data_url(in_raw($input, 'file'), (int)($config['max_video_bytes'] ?? 16777216));
+        $h = substr($bin, 0, 12); $ext = null;
+        if (substr($h, 4, 4) === 'ftyp') $ext = 'mp4'; elseif (str_starts_with($h, "\x1A\x45\xDF\xA3")) $ext = 'webm';
+        if ($ext === null) fail('فقط فایل ویدیویی معتبر (MP4 یا WebM) مجاز است.');
+        respond(['success' => true, 'url' => store_upload('video', $bin, $ext)]);
     },
     'POST upload_font' => function () use ($input, $config) {
         require_super();

@@ -1,7 +1,7 @@
 // استودیوی پوستر و استوری: انتخاب صحنه و اندازه، رده‌ی قبلی، فیلدهای قابل نمایش، موسیقی؛ خروجی تصویر (JPG/PNG/PDF)،
 // ویدیوی ۸ ثانیه‌ای (MP4) و اشتراک‌گذاری. فقط وقتی کاربر دکمه را بزند بارگذاری می‌شود.
 import { prepare, renderFrame, makeTex, STILL, SCENES, SIZES, TEXTS } from './engine.js';
-import { exportVideo, synthMusic, fitUserAudio, frameState, MOODS, VIDEO_SECONDS } from './media.js';
+import { exportVideo, synthMusic, fitUserAudio, frameState, MOODS, VIDEO_SECONDS, seekVideo } from './media.js';
 import { canvasesToPdf, downloadBlob } from '../pdf.js';
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -16,6 +16,7 @@ const STR = {
         webm: 'This browser cannot make MP4; Instagram may reject WebM. Try Chrome or Safari.', opus: 'The audio is saved as Opus. If Instagram mutes it, create the video without music and add music from Instagram’s own Music sticker.', videoErr: 'Could not create the video.', shareFail: 'Sharing is not available in this browser; use Download.', noPrevNote: 'Files are created on your device and are not uploaded.' },
 };
 const loadImg = (src) => new Promise((res) => { if (!src) return res(null); const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
+const loadVid = (src) => new Promise((res) => { if (!src) return res(null); const v = document.createElement('video'); v.muted = true; v.loop = true; v.playsInline = true; v.preload = 'auto'; v.crossOrigin = 'anonymous'; v.onloadeddata = async () => { await seekVideo(v, Math.min(0.5, (v.duration || 1) / 2)); res(v); }; v.onerror = () => res(null); v.src = src; v.load(); });
 const materialFor = (idx, n) => { if (idx < 0 || n <= 1) return 'gloss'; const r = idx / (n - 1); return r < 0.25 ? 'matte' : r < 0.55 ? 'gloss' : r < 0.85 ? 'metal' : 'holo'; };
 const canvasToBlob = (c, type, q) => new Promise((res, rej) => c.toBlob(b => (b ? res(b) : rej(new Error('blob'))), type, q));
 const COARSE = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
@@ -44,10 +45,10 @@ function Studio({ tenant, cardData, front, back, lang = 'fa', ownerName = '', or
             const hide = adminHidden; const filt = (d) => { const o = { ...d }; hide.forEach(id => { o[id] = ''; }); return o; };
             let f = front, b = back; if (hide.size) { const r = await renderSides(filt(cardData)); f = r[0]; b = r[1]; }
             let prevTex = null; if (prevRank && rankField) { try { const r = await renderSides(filt({ ...cardData, [rankField.id]: prevRank })); prevTex = makeTex(r[0]); } catch (e) { } }
-            const [logo, logoDark, bgImage] = await Promise.all([loadImg(tenant.logoUrl), loadImg(tenant.logoUrlDark), P.bg && P.bg.image ? loadImg(P.bg.image) : null]);
+            const [logo, logoDark, bgImage, bgVideo] = await Promise.all([loadImg(tenant.logoUrl), loadImg(tenant.logoUrlDark), P.bg && P.bg.image ? loadImg(P.bg.image) : null, P.bg && P.bg.video ? loadVid(P.bg.video) : null]);
             let qr = null; try { if (P.showQr !== false && window.QRious) { const q = new window.QRious({ value: verifyUrl(cardData), size: 360, level: 'M', foreground: '#111827', background: '#ffffff' }); qr = q.canvas || null; } } catch (e) { }
             try { await document.fonts.load('900 40px Vazirmatn'); await document.fonts.load('600 30px Vazirmatn'); } catch (e) { }
-            if (alive) { setAssets({ front: makeTex(f), back: makeTex(b), prev: prevTex, logo, logoDark: logoDark || null, qr, bgImage }); setBusy(''); }
+            if (alive) { setAssets({ front: makeTex(f), back: makeTex(b), prev: prevTex, logo, logoDark: logoDark || null, qr, bgImage, bgVideo }); setBusy(''); }
         })().catch(e => { if (alive) { setBusy(''); notify && notify(String(e && e.message || e)); } });
         return () => { alive = false; };
     }, [hiddenKey, prevRank]);
@@ -61,7 +62,7 @@ function Studio({ tenant, cardData, front, back, lang = 'fa', ownerName = '', or
     const fillTpl = (tpl) => String(tpl || '').replace(/\{([^{}\s]+)\}/g, (_, k) => (k in vars ? vars[k] : '')).replace(/\s*[·|\-–—:،]\s*(?=$)/g, '').replace(/\s+/g, ' ').trim();
     const nameTxt = P.showName === false ? '' : fillTpl(P.title || '{name}'); const lineTxt = (Array.isArray(P.lines) ? P.lines : []).map(fillTpl).filter(Boolean);
     const input = useMemo(() => assets && ({ front: assets.front, back: assets.back, prev: assets.prev, logo: assets.logo, logoDark: assets.logoDark, qr: P.showQr === false ? null : assets.qr, lang: txtLang, scene, material,
-        bg: { mode: (P.bg && P.bg.mode) || 'auto', c1: P.bg && P.bg.c1, c2: P.bg && P.bg.c2, theme: tenant.theme, image: assets.bgImage || null, override: (P.byRank && P.byRank[rankValue]) || null },
+        bg: { mode: (P.bg && P.bg.mode) || 'auto', c1: P.bg && P.bg.c1, c2: P.bg && P.bg.c2, theme: tenant.theme, image: assets.bgImage || null, video: assets.bgVideo || null, override: (P.byRank && P.byRank[rankValue]) || null },
         labels: { promoted: orgT.promoted, newCard: orgT.newCard, scan: orgT.scan }, texts: { name: nameTxt, rankNew: rankValue ? trOpt(rankValue) : '', rankOld: mode === 'story' && prevRank ? trOpt(prevRank) : '', date: dateTxt, orgName, lines: lineTxt } }), [assets, scene, material, mode, txtLang, nameTxt, rankValue, prevRank, dateTxt, orgName, lineTxt.join('\u0001')]);
     const sz = mode === 'story' ? SIZES.story : SIZES[size]; const kind = mode === 'story' ? 'story' : 'poster';
     useEffect(() => { // پیش‌نمایش ثابت
@@ -69,7 +70,8 @@ function Studio({ tenant, cardData, front, back, lang = 'fa', ownerName = '', or
     }, [input, kind, size, playing]);
     useEffect(() => { // پیش‌نمایش متحرک (همان زمان‌بندی ویدیو)
         if (!playing || !input || !cv.current) return; const pw = 480; const spec = prepare({ ...input, kind: 'story', size: { w: pw, h: Math.round(pw * 16 / 9) } }); let raf = 0; const t0 = performance.now();
-        const loop = (now) => { const t = ((now - t0) / 1000 % VIDEO_SECONDS) / VIDEO_SECONDS; renderFrame(cv.current, spec, frameState(Math.round(t * 1000), 1000)); raf = requestAnimationFrame(loop); }; raf = requestAnimationFrame(loop); return () => cancelAnimationFrame(raf);
+        const bv = assets && assets.bgVideo; if (bv) bv.play().catch(() => { });
+        const loop = (now) => { const t = ((now - t0) / 1000 % VIDEO_SECONDS) / VIDEO_SECONDS; renderFrame(cv.current, spec, frameState(Math.round(t * 1000), 1000)); raf = requestAnimationFrame(loop); }; raf = requestAnimationFrame(loop); return () => { cancelAnimationFrame(raf); if (bv) bv.pause(); };
     }, [playing, input]);
     useEffect(() => { // تصویرک سبک‌ها (فقط اگر چند سبک تعریف شده)
         if (!input || allowed.length < 2) return; allowed.forEach(sc => { const c = thumbRefs.current[sc]; if (!c) return; const w = 150; const spec = prepare({ ...input, scene: sc, kind: 'story', size: { w, h: Math.round(w * 16 / 9) } }); renderFrame(c, spec, { t: STILL[sc], ui: 1, fx: -1 }); });

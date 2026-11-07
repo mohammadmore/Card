@@ -5,6 +5,8 @@ import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 import { prepare, renderFrame, clamp, seg } from './engine.js';
 
 export const VIDEO_SECONDS = 8;
+/** رفتن به زمان t در عنصر ویدیو و صبر تا فریم آماده شود (برای ساخت فریم‌به‌فریم). */
+export const seekVideo = (v, t) => new Promise((res) => { if (!v || !isFinite(v.duration) || !v.duration) return res(); const target = t % v.duration; if (Math.abs(v.currentTime - target) < 0.001) return res(); let done = false; const fin = () => { if (!done) { done = true; v.removeEventListener('seeked', fin); res(); } }; v.addEventListener('seeked', fin); v.currentTime = target; setTimeout(fin, 1500); });
 export const MOODS = ['celebration', 'calm', 'epic'];
 const SR = 48000; // Opus فقط ۴۸ کیلوهرتز را قبول می‌کند؛ AAC هم با آن مشکلی ندارد
 const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
@@ -75,7 +77,7 @@ const encodeWebCodecs = async (spec, { seconds, fps, audio, audioCodec, onProgre
     venc.configure({ codec: 'avc1.640028', width: W, height: H, bitrate: Math.round(6e6 * (W * H) / (1080 * 1920)), framerate: fps, avc: { format: 'avc' } });
     for (let i = 0; i < N; i++) {
         if (signal && signal.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' }); if (fail) throw fail;
-        renderFrame(canvas, spec, frameState(i, N)); const fr = new VideoFrame(canvas, { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) }); venc.encode(fr, { keyFrame: i % fps === 0 }); fr.close();
+        if (spec.bgInfo && spec.bgInfo.video) await seekVideo(spec.bgInfo.video, i / fps); renderFrame(canvas, spec, frameState(i, N)); const fr = new VideoFrame(canvas, { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) }); venc.encode(fr, { keyFrame: i % fps === 0 }); fr.close();
         while (venc.encodeQueueSize > 6) await tick(); if (i % 2 === 0) { onProgress && onProgress(i / N * (audio ? 0.92 : 0.98)); await tick(); }
     }
     await venc.flush(); if (fail) throw fail;
@@ -90,7 +92,7 @@ const encodeWebCodecs = async (spec, { seconds, fps, audio, audioCodec, onProgre
 };
 const encodeRecorder = async (spec, { seconds, fps, audio, onProgress, signal }) => {
     if (typeof MediaRecorder === 'undefined') throw new Error('این مرورگر از ساخت ویدیو پشتیبانی نمی‌کند.');
-    const canvas = document.createElement('canvas'); canvas.width = spec.W; canvas.height = spec.H; renderFrame(canvas, spec, frameState(0, 1));
+    const canvas = document.createElement('canvas'); canvas.width = spec.W; canvas.height = spec.H; const bv = spec.bgInfo && spec.bgInfo.video; if (bv) { await seekVideo(bv, 0); bv.loop = true; try { await bv.play(); } catch (e) { } } renderFrame(canvas, spec, frameState(0, 1));
     const stream = canvas.captureStream(fps); let ac = null, src = null;
     if (audio) { ac = new (window.AudioContext || window.webkitAudioContext)(); src = ac.createBufferSource(); src.buffer = audio; const dest = ac.createMediaStreamDestination(); src.connect(dest); dest.stream.getAudioTracks().forEach(t => stream.addTrack(t)); }
     // «video/mp4» بدون کدک ممکن است VP9+Opus داخل MP4 بسازد که اینستاگرام نمی‌پذیرد؛ پس فقط با کدک صریح H.264 انتخاب می‌شود
@@ -100,7 +102,7 @@ const encodeRecorder = async (spec, { seconds, fps, audio, onProgress, signal })
     const done = new Promise(r => { rec.onstop = r; }); rec.start(250); if (src) { await ac.resume(); src.start(); }
     const t0 = performance.now();
     await new Promise((resolve, reject) => { const loop = () => { if (signal && signal.aborted) { reject(Object.assign(new Error('aborted'), { name: 'AbortError' })); return; } const el = (performance.now() - t0) / 1000; const t = Math.min(1, el / seconds); const n = 1000; renderFrame(canvas, spec, frameState(Math.round(t * n), n)); onProgress && onProgress(t); if (el >= seconds) resolve(); else requestAnimationFrame(loop); }; requestAnimationFrame(loop); }).catch(e => { try { rec.stop(); } catch (er) { } if (ac) ac.close(); throw e; });
-    rec.stop(); await done; stream.getTracks().forEach(t => t.stop()); if (ac) ac.close();
+    if (bv) bv.pause(); rec.stop(); await done; stream.getTracks().forEach(t => t.stop()); if (ac) ac.close();
     const type = mime.split(';')[0]; return { blob: new Blob(chunks, { type }), ext: type === 'video/mp4' ? 'mp4' : 'webm', mime: type, method: 'recorder' };
 };
 /**

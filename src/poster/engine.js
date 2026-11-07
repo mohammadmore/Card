@@ -219,6 +219,7 @@ const bokeh = (ctx, W, H, pal, t, n, dark) => {
 };
 const backdrop = (ctx, W, H, spec, scene, t, floorLine) => {
     const pal = spec.pal; const bg = spec.bgInfo; ctx.save();
+    if (bg.video && bg.video.videoWidth) { const im = bg.video; const iw = im.videoWidth, ih = im.videoHeight; const k = Math.max(W / iw, H / ih); ctx.drawImage(im, (W - iw * k) / 2, (H - ih * k) / 2, iw * k, ih * k); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(0, 0, W, H); ctx.restore(); return; }
     if (bg.image) { const im = bg.image; const k = Math.max(W / im.width, H / im.height); ctx.drawImage(im, (W - im.width * k) / 2, (H - im.height * k) / 2, im.width * k, im.height * k); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(0, 0, W, H); ctx.restore(); return; }
     const g = ctx.createLinearGradient(0, 0, 0, H);
     if (scene === 'neon') { g.addColorStop(0, '#03040a'); g.addColorStop(0.55, pal.at(1, 0.07)); g.addColorStop(1, '#02030a'); }
