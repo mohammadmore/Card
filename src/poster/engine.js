@@ -355,7 +355,7 @@ const layoutOf = (kind, W, H) => {
     const tall = H / W > 1.3; return { stage: { x: 0, y: H * (tall ? 0.135 : 0.16), w: W, h: H * (tall ? 0.46 : 0.43) }, logo: { x: W / 2, y: H * 0.062, s: 104 * u }, badgeY: -1, nameY: H * (tall ? 0.665 : 0.69), rankY: H * (tall ? 0.725 : 0.75), dateY: H * (tall ? 0.77 : 0.795), qrY: H * (tall ? 0.86 : 0.875), qrS: H * (tall ? 0.058 : 0.07), unit: u };
 };
 const drawOverlay = (ctx, spec, ui, dark) => {
-    const { W, H, kind } = spec; const L = layoutOf(kind, W, H); const u = L.unit; const T = { ...(TEXTS[spec.lang] || TEXTS.en), ...(spec.labels || {}) }; const rtl = spec.lang === 'fa' || spec.lang === 'ar'; const tx = spec.texts; const pal = spec.pal;
+    const { W, H, kind } = spec; const L = layoutOf(kind, W, H); const u = L.unit; const T = { ...(TEXTS[spec.lang] || TEXTS.en), ...Object.fromEntries(Object.entries(spec.labels || {}).filter(([, v]) => v)) }; const rtl = spec.lang === 'fa' || spec.lang === 'ar'; const tx = spec.texts; const pal = spec.pal;
     const fg = dark ? '#ffffff' : '#0f172a', sub = dark ? 'rgba(255,255,255,0.74)' : 'rgba(15,23,42,0.66)'; ctx.save(); ctx.direction = rtl ? 'rtl' : 'ltr'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const appear = (a, b) => easeOut(seg(ui, a, b)); const slide = (a, b) => (1 - appear(a, b)) * 36 * u;
     // لوگو (در صحنه‌ی آویز، کنار بالا-چپ تا با بند برخورد نکند)
