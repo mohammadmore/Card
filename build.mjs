@@ -7,7 +7,11 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync, readdirSync } fro
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 
+// بسته‌ی «پوستر و استوری» جدا ساخته می‌شود و فقط با کلیک کاربر بارگذاری می‌شود؛ هش محتوایش به app.js داده می‌شود تا نسخه‌ی قدیمی کش نماند
+await build({ entryPoints: ['src/poster/entry.jsx'], bundle: true, minify: true, format: 'iife', target: ['es2019'], jsx: 'transform', jsxFactory: 'React.createElement', jsxFragment: 'React.Fragment', outfile: 'assets/poster.js', legalComments: 'none' });
+const posterHash = createHash('sha256').update(readFileSync('assets/poster.js')).digest('hex').slice(0, 10);
 await build({
+  define: { __POSTER_V__: JSON.stringify(posterHash) },
   entryPoints: ['src/app.jsx'],
   bundle: true,
   minify: true,
@@ -33,7 +37,8 @@ copyFileSync('node_modules/vazirmatn/OFL.txt', 'assets/fonts/Vazirmatn-OFL.txt')
 const ctx = {}; vm.createContext(ctx);
 vm.runInContext(readFileSync('src/vendor/lucide.full.min.js', 'utf8'), ctx);
 const all = ctx.lucide.icons;
-const source = readdirSync('src').filter(f => /\.(jsx?|mjs)$/.test(f)).map(f => readFileSync(`src/${f}`, 'utf8')).join('\n');
+const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? (e.name === 'vendor' ? [] : walk(`${d}/${e.name}`)) : (/\.(jsx?|mjs)$/.test(e.name) ? [`${d}/${e.name}`] : []));
+const source = walk('src').map(f => readFileSync(f, 'utf8')).join('\n');
 const names = new Set([...source.matchAll(/['"`]([A-Z][A-Za-z0-9]*)['"`]/g)].map(m => m[1])); // حتی نام‌های تک‌حرفی مثل X
 names.add('CloudUpload'); // جایگزین UploadCloud در نسخه‌های جدید Lucide
 const icons = {};

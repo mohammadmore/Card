@@ -11,5 +11,8 @@
     "jszip": "3.10.1",
     "tailwindcss": "3.4.17",
     "vazirmatn": "33.0.3"
+  },
+  "dependencies": {
+    "mp4-muxer": "^5.2.2"
   }
 }

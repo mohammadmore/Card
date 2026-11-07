@@ -294,6 +294,27 @@ function find_tenant(PDO $pdo, string $key): ?array {
     $t = json_decode($row['data'], true); return is_array($t) ? $t : null;
 }
 const DEFAULT_THEME = ['c1' => '#f472b6', 'c2' => '#38bdf8', 'c3' => '#a855f7'];
+/** تنظیمات «پوستر و استوری» سازمان: فقط مقدارهای شناخته‌شده و پاک‌سازی‌شده ذخیره می‌شود. */
+function sanitize_poster($p, array $tenant): array {
+    $p = is_array($p) ? $p : [];
+    $all = ['float', 'neon', 'fan', 'lanyard'];
+    $scenes = array_values(array_intersect($all, array_map('strval', is_array($p['scenes'] ?? null) ? $p['scenes'] : [])));
+    if (!$scenes) $scenes = $all;
+    $def = in_array($p['defaultScene'] ?? '', $scenes, true) ? $p['defaultScene'] : $scenes[0];
+    $hex = fn($v, $d) => (is_string($v) && preg_match('/^#[0-9a-fA-F]{6}$/', $v)) ? $v : $d;
+    $bg = is_array($p['bg'] ?? null) ? $p['bg'] : [];
+    $mode = in_array($bg['mode'] ?? '', ['auto', 'theme', 'custom'], true) ? $bg['mode'] : 'auto';
+    $img = trim((string)($bg['image'] ?? ''));
+    if ($img !== '' && !valid_image_url($img)) fail_field('تصویر پس‌زمینه‌ی پوستر نامعتبر است. یک فایل آپلود کنید یا لینک https وارد کنید.', 'poster.bg.image');
+    $by = [];
+    foreach (array_slice(is_array($p['byRank'] ?? null) ? $p['byRank'] : [], 0, 60, true) as $k => $v) { $k = mb_substr(trim((string)$k), 0, 200); if ($k !== '' && is_string($v) && preg_match('/^#[0-9a-fA-F]{6}$/', $v)) $by[$k] = $v; }
+    $ids = array_map(fn($f) => is_array($f) ? (string)($f['id'] ?? '') : '', is_array($tenant['fields'] ?? null) ? $tenant['fields'] : []);
+    $hide = array_values(array_unique(array_filter(array_map('strval', is_array($p['hideFields'] ?? null) ? $p['hideFields'] : []), fn($id) => in_array($id, $ids, true))));
+    $tags = mb_substr(trim(preg_replace('/\s+/u', ' ', preg_replace('/[^\p{L}\p{N}_#\s]/u', '', (string)($p['hashtags'] ?? '')))), 0, 300);
+    return ['enabled' => !empty($p['enabled']) && ($tenant['cardLayout'] ?? 'double') === 'double', 'scenes' => $scenes, 'defaultScene' => $def,
+        'bg' => ['mode' => $mode, 'c1' => $hex($bg['c1'] ?? null, '#6366f1'), 'c2' => $hex($bg['c2'] ?? null, '#a855f7'), 'image' => $img],
+        'byRank' => $by ?: new stdClass(), 'hideFields' => $hide, 'video' => ($p['video'] ?? true) !== false, 'hashtags' => $tags];
+}
 function sanitize_theme($theme): array {
     $out = DEFAULT_THEME;
     if (is_array($theme)) foreach ($out as $k => $_) { $v = $theme[$k] ?? null; if (is_string($v) && preg_match('/^#[0-9a-fA-F]{6}$/', $v)) $out[$k] = strtolower($v); }
@@ -877,6 +898,8 @@ $routes = [
         $data['cardLimit'] = max(0, min(10000000, (int)($input['cardLimit'] ?? 0)));
         $data['planName'] = in_str($input, 'planName', 80);
         $data['orderId'] = preg_match('/^ord_[a-f0-9]{16}$/', (string)($input['orderId'] ?? '')) ? (string)$input['orderId'] : (string)($existing['orderId'] ?? '');
+        // پوستر و استوری (صحنه‌ها، پس‌زمینه، فیلدهای مخفی)
+        $data['poster'] = sanitize_poster($input['poster'] ?? null, $data);
         // لوگوی اختیاری برای حالت تیره (خالی = همان لوگوی عادی)
         $data['logoUrlDark'] = trim(in_str($input, 'logoUrlDark', 1000));
         if ($data['logoUrlDark'] !== '' && !valid_image_url($data['logoUrlDark'])) fail_field('لینک لوگوی حالت تیره نامعتبر است. یک فایل آپلود کنید یا لینکی که با https:// شروع می‌شود وارد کنید.', 'logoUrlDark');
