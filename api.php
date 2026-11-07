@@ -325,10 +325,13 @@ function sanitize_poster($p, array $tenant): array {
             if ($v !== '') $texts[$lg][$k] = $v;
         }
     }
+    $lines = [];
+    foreach (array_slice(is_array($p['lines'] ?? null) ? $p['lines'] : [], 0, 3) as $ln) { $v = mb_substr(trim(preg_replace('/\s+/u', ' ', (string)(is_array($ln) ? ($ln['text'] ?? '') : $ln))), 0, 160); if ($v !== '') $lines[] = $v; }
+    $title = mb_substr(trim(preg_replace('/\s+/u', ' ', (string)($p['title'] ?? ''))), 0, 160);
     $mats = ['auto', 'matte', 'gloss', 'metal', 'holo'];
     $md = (string)($p['musicDefault'] ?? '');
     if (!preg_match('/^(none|celebration|calm|epic|org:[0-2])$/', $md) || (str_starts_with($md, 'org:') && (int)substr($md, 4) >= count($music))) $md = $music ? 'org:0' : 'celebration';
-    return ['material' => in_array($p['material'] ?? '', $mats, true) ? $p['material'] : 'auto', 'showQr' => ($p['showQr'] ?? true) !== false, 'showName' => ($p['showName'] ?? true) !== false, 'showPrev' => ($p['showPrev'] ?? true) !== false,
+    return ['title' => $title, 'lines' => $lines, 'material' => in_array($p['material'] ?? '', $mats, true) ? $p['material'] : 'auto', 'showQr' => ($p['showQr'] ?? true) !== false, 'showName' => ($p['showName'] ?? true) !== false, 'showPrev' => ($p['showPrev'] ?? true) !== false,
         'allowPoster' => !empty($p['allowPoster']), 'musicDefault' => $md, 'music' => $music, 'texts' => $texts ?: new stdClass(), 'enabled' => !empty($p['enabled']) && ($tenant['cardLayout'] ?? 'double') === 'double', 'scenes' => $scenes, 'defaultScene' => $def,
         'bg' => ['mode' => $mode, 'c1' => $hex($bg['c1'] ?? null, '#6366f1'), 'c2' => $hex($bg['c2'] ?? null, '#a855f7'), 'image' => $img],
         'byRank' => $by ?: new stdClass(), 'hideFields' => $hide, 'video' => ($p['video'] ?? true) !== false, 'hashtags' => $tags];

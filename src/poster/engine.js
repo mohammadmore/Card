@@ -379,10 +379,12 @@ const drawOverlay = (ctx, spec, ui, dark) => {
         } else pill(ctx, W / 2, y, tx.rankNew, chipNew);
         ctx.restore();
     }
-    // تاریخ و سازمان
-    if (tx.date || (kind === 'story' && tx.orgName)) { ctx.save(); ctx.globalAlpha = appear(0.52, 0.68); ctx.fillStyle = sub; ctx.font = `600 ${34 * u}px Vazirmatn, Tahoma`; ctx.fillText([tx.date, kind === 'story' ? tx.orgName : ''].filter(Boolean).join('  ·  '), W / 2, L.dateY + slide(0.52, 0.68)); ctx.restore(); }
+    // خطوط متن سفارشی (متغیرهای کارت) جای خط «تاریخ · سازمان» را می‌گیرند
+    const lines = (tx.lines || []).filter(Boolean).slice(0, 3);
+    if (lines.length) { ctx.save(); ctx.fillStyle = sub; lines.forEach((ln, i) => { ctx.globalAlpha = appear(0.52 + i * 0.04, 0.68 + i * 0.04); const s = fitFont(ctx, ln, W * 0.86, (i === 0 ? 38 : 32) * u, i === 0 ? 700 : 600, 20); ctx.font = `${i === 0 ? 700 : 600} ${s}px Vazirmatn, Tahoma`; ctx.fillText(ln, W / 2, L.dateY + i * 46 * u + slide(0.52, 0.68)); }); ctx.restore(); }
+    else if (tx.date || (kind === 'story' && tx.orgName)) { ctx.save(); ctx.globalAlpha = appear(0.52, 0.68); ctx.fillStyle = sub; ctx.font = `600 ${34 * u}px Vazirmatn, Tahoma`; ctx.fillText([tx.date, kind === 'story' ? tx.orgName : ''].filter(Boolean).join('  ·  '), W / 2, L.dateY + slide(0.52, 0.68)); ctx.restore(); }
     // QR: مربع QR کنار توضیحش (در یک ردیف، تا از حاشیه‌ی امن استوری بیرون نزند)
-    if (spec.qr) { ctx.save(); ctx.globalAlpha = appear(0.62, 0.8); const q = L.qrS, pad = 12 * u; ctx.font = `600 ${27 * u}px Vazirmatn, Tahoma`; const tw = ctx.measureText(T.scan).width; const gap = 26 * u; const total = q + 2 * pad + gap + tw; const y = L.qrY + slide(0.62, 0.8);
+    if (spec.qr) { ctx.save(); ctx.globalAlpha = appear(0.62, 0.8); const q = L.qrS, pad = 12 * u; ctx.font = `600 ${27 * u}px Vazirmatn, Tahoma`; const tw = ctx.measureText(T.scan).width; const gap = 26 * u; const total = q + 2 * pad + gap + tw; const y = L.qrY + Math.max(0, ((spec.texts.lines || []).filter(Boolean).length - 1)) * 46 * u + slide(0.62, 0.8);
         const qx = rtl ? W / 2 + total / 2 - q - pad : W / 2 - total / 2 + pad; roundRectPath(ctx, qx - pad, y - q / 2 - pad, q + 2 * pad, q + 2 * pad, 18 * u); ctx.fillStyle = '#fff'; ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = 22 * u; ctx.fill(); ctx.shadowColor = 'transparent'; ctx.drawImage(spec.qr, qx, y - q / 2, q, q);
         ctx.fillStyle = sub; ctx.textAlign = rtl ? 'right' : 'left'; ctx.fillText(T.scan, rtl ? qx - pad - gap : qx + q + pad + gap, y); ctx.restore(); }
     ctx.restore();

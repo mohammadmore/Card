@@ -54,10 +54,15 @@ function Studio({ tenant, cardData, front, back, lang = 'fa', ownerName = '', or
 
     const txtLang = ['fa', 'en', 'ar', 'tr'].includes(lang) ? lang : 'en'; const orgT = (P.texts && P.texts[txtLang]) || {}; const TT = { ...(TEXTS[txtLang] || TEXTS.en), ...orgT };
     const pm = P.material && P.material !== 'auto' ? P.material : null; const material = pm || materialFor(rankOptions.indexOf(rankValue), rankOptions.length);
-    const dateTxt = issuedAt ? toNum(formatDate(issuedAt)) : ''; const nameTxt = P.showName === false ? '' : ownerName;
+    const dateTxt = issuedAt ? toNum(formatDate(issuedAt)) : '';
+    // متغیرهای قالب‌ها: {name} {rank} {prev} {date} {org} و {شناسه‌ی هر فیلد کارت}؛ فیلدهای مخفی خالی می‌شوند
+    const fieldText = (f) => { if (adminHidden.has(f.id)) return ''; const v = cardData[f.id]; if (v == null || v === '') return ''; if (f.type === 'select') return trOpt(String(v)); if (f.type === 'date') { try { return toNum(formatDate(String(v))); } catch (e) { return String(v); } } return toNum(String(v)); };
+    const vars = useMemo(() => { const m = { name: ownerName, rank: rankValue ? trOpt(rankValue) : '', prev: prevRank ? trOpt(prevRank) : '', date: dateTxt, org: orgName }; (tenant.fields || []).forEach(f => { if (!['photo', 'barcode', 'qrcode'].includes(f.type)) m[f.id] = fieldText(f); }); return m; }, [ownerName, rankValue, prevRank, dateTxt, orgName]);
+    const fillTpl = (tpl) => String(tpl || '').replace(/\{([^{}\s]+)\}/g, (_, k) => (k in vars ? vars[k] : '')).replace(/\s*[·|\-–—:،]\s*(?=$)/g, '').replace(/\s+/g, ' ').trim();
+    const nameTxt = P.showName === false ? '' : fillTpl(P.title || '{name}'); const lineTxt = (Array.isArray(P.lines) ? P.lines : []).map(fillTpl).filter(Boolean);
     const input = useMemo(() => assets && ({ front: assets.front, back: assets.back, prev: assets.prev, logo: assets.logo, logoDark: assets.logoDark, qr: P.showQr === false ? null : assets.qr, lang: txtLang, scene, material,
         bg: { mode: (P.bg && P.bg.mode) || 'auto', c1: P.bg && P.bg.c1, c2: P.bg && P.bg.c2, theme: tenant.theme, image: assets.bgImage || null, override: (P.byRank && P.byRank[rankValue]) || null },
-        labels: { promoted: orgT.promoted, newCard: orgT.newCard, scan: orgT.scan }, texts: { name: nameTxt, rankNew: rankValue ? trOpt(rankValue) : '', rankOld: mode === 'story' && prevRank ? trOpt(prevRank) : '', date: dateTxt, orgName } }), [assets, scene, material, mode, txtLang, nameTxt, rankValue, prevRank, dateTxt, orgName]);
+        labels: { promoted: orgT.promoted, newCard: orgT.newCard, scan: orgT.scan }, texts: { name: nameTxt, rankNew: rankValue ? trOpt(rankValue) : '', rankOld: mode === 'story' && prevRank ? trOpt(prevRank) : '', date: dateTxt, orgName, lines: lineTxt } }), [assets, scene, material, mode, txtLang, nameTxt, rankValue, prevRank, dateTxt, orgName, lineTxt.join('\u0001')]);
     const sz = mode === 'story' ? SIZES.story : SIZES[size]; const kind = mode === 'story' ? 'story' : 'poster';
     useEffect(() => { // پیش‌نمایش ثابت
         if (!input || playing || !cv.current) return; const pw = 560; const spec = prepare({ ...input, kind, size: { w: pw, h: Math.round(pw * sz.h / sz.w) } }); renderFrame(cv.current, spec, { t: STILL[scene] ?? 0.4, ui: 1, fx: kind === 'story' ? 0.3 : -1 });
@@ -87,7 +92,7 @@ function Studio({ tenant, cardData, front, back, lang = 'fa', ownerName = '', or
         } catch (e) { setVid(null); if (!(e && e.name === 'AbortError')) notify(`${S.videoErr} ${e && e.message ? e.message : ''}`); }
     };
     const caption = useMemo(() => {
-        const tags = String(P.hashtags || '').split(/\s+/).filter(Boolean).map(h => (h.startsWith('#') ? h : `#${h}`)).join(' '); const n = ownerName, r = rankValue ? trOpt(rankValue) : ''; const tpl = r ? orgT.captionPromo : orgT.captionNew; const fill = (x) => x.replace(/\{name\}/g, n).replace(/\{rank\}/g, r).replace(/\{org\}/g, orgName);
+        const tags = String(P.hashtags || '').split(/\s+/).filter(Boolean).map(h => (h.startsWith('#') ? h : `#${h}`)).join(' '); const n = ownerName, r = rankValue ? trOpt(rankValue) : ''; const tpl = r ? orgT.captionPromo : orgT.captionNew; const fill = (x) => fillTpl(x);
         const line = { fa: r ? `${n} به رده‌ی «${r}» ارتقا یافت! 🎉` : `کارت جدید ${n} صادر شد 🎉`, en: r ? `${n} has been promoted to ${r}! 🎉` : `${n}'s new card is ready 🎉`, ar: r ? `تمت ترقية ${n} إلى «${r}» 🎉` : `تم إصدار بطاقة ${n} 🎉`, tr: r ? `${n}, ${r} rütbesine terfi etti! 🎉` : `${n} için yeni kart hazır 🎉` }[txtLang];
         return [tpl ? fill(tpl) : line, orgName, tags].filter(Boolean).join('\n');
     }, [ownerName, rankValue, orgName, txtLang]);
