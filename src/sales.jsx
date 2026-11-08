@@ -44,7 +44,8 @@ export function SalesCenter({ kit, onClose, onBuildTenant, onOpenTenant }) {
 function OrdersTab({ kit, onBuildTenant, onOpenTenant }) {
     const { apiGet, apiPost, Icon, notifyError, notifySuccess, askConfirm } = kit;
     const [list, setList] = useState(null); const [filter, setFilter] = useState('active'); const [q, setQ] = useState(''); const [openId, setOpenId] = useState(null);
-    const load = () => apiGet('sales_orders').then(setList).catch(notifyError);
+    const touched = React.useRef(false);
+    const load = () => apiGet('sales_orders').then(l => { setList(l); if (!touched.current) { touched.current = true; const a = (l || []).filter(o => ['paid', 'in_progress'].includes(o.status)).length; if (!a) setFilter((l || []).some(o => o.status === 'pending_payment') ? 'pending_payment' : 'all'); } }).catch(notifyError);
     useEffect(() => { load(); }, []);
     const shown = (list || []).filter(o => (filter === 'all' || (filter === 'active' ? ['paid', 'in_progress'].includes(o.status) : o.status === filter))
         && (!q || `${o.code} ${o.mobile} ${(o.data.org || {}).name || ''} ${(o.data.applicant || {}).name || ''}`.includes(q.trim())));
@@ -54,10 +55,10 @@ function OrdersTab({ kit, onBuildTenant, onOpenTenant }) {
     return (
         <div className="space-y-4">
             <div className="flex flex-wrap gap-2 items-center">
-                {[['active', 'نیازمند اقدام'], ['pending_payment', 'در انتظار پرداخت'], ['delivered', 'تحویل‌شده'], ['cancelled', 'لغو‌شده'], ['all', 'همه']].map(([k, l]) => <button key={k} onClick={() => setFilter(k)} aria-pressed={filter === k} className={`px-3 py-1.5 rounded-full text-sm font-bold border ${filter === k ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white/70 text-slate-600'}`}>{l} <span className="opacity-70">{fa(counts[k] || 0)}</span></button>)}
+                {[['active', 'نیازمند اقدام'], ['pending_payment', 'در انتظار پرداخت'], ['delivered', 'تحویل‌شده'], ['cancelled', 'لغو‌شده'], ['all', 'همه']].map(([k, l]) => <button key={k} onClick={() => { touched.current = true; setFilter(k); }} aria-pressed={filter === k} className={`px-3 py-1.5 rounded-full text-sm font-bold border ${filter === k ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white/70 text-slate-600'}`}>{l} <span className="opacity-70">{fa(counts[k] || 0)}</span></button>)}
                 <input value={q} onChange={e => setQ(e.target.value)} placeholder="جستجو: کد، موبایل، نام…" aria-label="جستجوی سفارش" className={`${inp} max-w-xs ms-auto`} />
             </div>
-            {!list ? <p className="text-center text-slate-500 py-10">در حال بارگذاری…</p> : shown.length === 0 ? <p className="text-center text-slate-500 py-10 bg-white/50 rounded-2xl">سفارشی نیست.</p> : (
+            {!list ? <p className="text-center text-slate-500 py-10">در حال بارگذاری…</p> : shown.length === 0 ? <div className="text-center text-slate-600 py-10 bg-white/50 rounded-2xl space-y-3"><p className="font-bold">{filter === 'active' ? 'سفارشی که نیاز به اقدام داشته باشد نیست.' : 'سفارشی در این دسته نیست.'}</p>{(list || []).length > 0 && filter !== 'all' && <button type="button" onClick={() => setFilter('all')} className="text-sm font-bold text-indigo-700 underline">نمایش همه‌ی سفارش‌ها ({(list || []).length})</button>}</div> : (
                 <div className="overflow-x-auto bg-white/70 rounded-2xl border">
                     <table className="w-full text-sm stack-table">
                         <thead className="bg-slate-50 text-slate-600"><tr>{['کد', 'سازمان', 'درخواست‌دهنده', 'پلن', 'مبلغ', 'وضعیت', 'تاریخ', ''].map((h, i) => <th key={i} className="p-3 text-start font-bold whitespace-nowrap">{h}</th>)}</tr></thead>

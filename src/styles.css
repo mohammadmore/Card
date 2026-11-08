@@ -285,3 +285,12 @@ html.dark .logo-light, html:not(.dark) .logo-dark { display: none !important; }
 .logo-preview-dark { background: #1e293b !important; border-color: #334155 !important; }
 .logo-preview-light { background: #f8fafc !important; border-color: #e2e8f0 !important; }
 @media print { .logo-dark { display: none !important; } .logo-light { display: revert !important; } }
+
+/* خوانایی: متن‌های خاکستری روشن و ریز روی پس‌زمینه‌ی گرادیانی (فقط حالت روشن؛ حالت تیره قوانین خودش را دارد) */
+html:not(.dark) .text-slate-400 { color: #64748b; }
+html:not(.dark) .text-slate-500 { color: #475569; }
+.text-\[10px\], .text-\[11px\] { font-size: 12px; line-height: 1.5; }
+/* لمسی: دکمه‌ها و فیلدهای کوچک در صفحه‌ی لمسی حداقل ۴۰ پیکسل ارتفاع/عرض مؤثر دارند */
+@media (pointer: coarse) {
+  button.p-2, button.p-2\.5, button.px-2\.5.py-1\.5, button.px-2.py-1\.5 { min-height: 40px; min-width: 40px; }
+}
