@@ -61,4 +61,13 @@ DirectoryIndex landing.php index.html
     Header always set X-Content-Type-Options "nosniff"
     Header always set X-Frame-Options "SAMEORIGIN"
     Header always set Referrer-Policy "same-origin"
+    # دسترسی به دوربین فقط برای خود سایت (گرفتن عکس کارت)؛ بقیه‌ی قابلیت‌های حساس بسته است
+    Header always set Permissions-Policy "camera=(self), microphone=(), geolocation=(), payment=(), usb=()"
+    # HSTS فقط روی HTTPS ارسال می‌شود (Apache 2.4)
+    Header always set Strict-Transport-Security "max-age=31536000" "expr=%{HTTPS} == 'on'"
+    # CSP برنامه‌ی اصلی (index.html). اسکریپت درون‌خطی تم با هش مجاز است؛ اگر آن را عوض کردید هش را به‌روز کنید:
+    #   php -r "echo base64_encode(hash('sha256', 'محتوای اسکریپت', true));"
+    <FilesMatch "^index\.html$">
+        Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-i6pl5gRC7+mfB/touoS8daNHHar8p5GiZo0hhPFK7e0='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data: https:; media-src 'self' blob: data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+    </FilesMatch>
 </IfModule>

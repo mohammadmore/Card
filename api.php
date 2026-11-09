@@ -9,6 +9,7 @@ header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: no-store');
 header('Referrer-Policy: same-origin');
+header("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'");
 // عمداً هیچ هدر CORS ارسال نمی‌شود: API فقط از همین دامنه قابل استفاده است.
 
 // ==========================================
@@ -368,7 +369,7 @@ function tenant_public_view(array $t): array {
 /** اعتبارسنجی و اعمال رمزهای جدید روی رکورد سازمان. */
 function apply_passwords(array &$t, string $adminPass, string $publicPass, bool $isNew): void {
     if ($isNew && ($adminPass === '' || $publicPass === '')) fail('تعیین رمز مدیر و رمز عمومی الزامی است.');
-    foreach ([$adminPass, $publicPass] as $p) { if ($p !== '' && mb_strlen($p) < 4) fail('رمز باید حداقل ۴ کاراکتر باشد.'); }
+    foreach ([$adminPass, $publicPass] as $p) { if ($p !== '' && mb_strlen($p) < 8) fail('رمز باید حداقل ۸ کاراکتر باشد.'); }
     if ($adminPass !== '' && $adminPass === $publicPass) fail('رمز مدیر و رمز عمومی نمی‌توانند یکسان باشند.');
     if ($adminPass !== '' && $publicPass === '' && !empty($t['publicPassHash']) && password_verify($adminPass, $t['publicPassHash'])) fail('رمز مدیر و رمز عمومی نمی‌توانند یکسان باشند.');
     if ($publicPass !== '' && $adminPass === '' && !empty($t['adminPassHash']) && password_verify($publicPass, $t['adminPassHash'])) fail('رمز مدیر و رمز عمومی نمی‌توانند یکسان باشند.');

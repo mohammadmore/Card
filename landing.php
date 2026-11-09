@@ -107,6 +107,8 @@ header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-cache');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
+$cspNonce = base64_encode(random_bytes(16));
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$cspNonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'");
 $jsonLd = [
     '@context' => 'https://schema.org', '@graph' => array_values(array_filter([
         ['@type' => 'Organization', 'name' => $platName, 'url' => $abs(), 'logo' => preg_match('#^https?://#', $logoSrc) ? $logoSrc : $origin . $logoSrc] + ($common['phone'] ? ['telephone' => $common['phone']] : []),
@@ -129,9 +131,9 @@ $jsonLd = [
 <link rel="icon" href="<?= h($favicon !== '' ? $imgUrl($favicon) : $basePath . 'assets/logo.svg') ?>">
 <link rel="preload" href="<?= h($basePath) ?>assets/fonts/Vazirmatn-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="<?= h($asset('assets/landing.css')) ?>">
-<style>:root{--g1:<?= h($theme['c1']) ?>;--g2:<?= h($theme['c2']) ?>;--g3:<?= h($theme['c3']) ?>}</style>
-<script>document.documentElement.classList.remove('no-js');try{var m=localStorage.getItem('ui_theme');if(m==='dark'||((!m||m==='system')&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark')}catch(e){}</script>
-<script type="application/ld+json"><?= json_encode($jsonLd, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?></script>
+<style nonce="<?= $cspNonce ?>">:root{--g1:<?= h($theme['c1']) ?>;--g2:<?= h($theme['c2']) ?>;--g3:<?= h($theme['c3']) ?>}</style>
+<script nonce="<?= $cspNonce ?>">document.documentElement.classList.remove('no-js');try{var m=localStorage.getItem('ui_theme');if(m==='dark'||((!m||m==='system')&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark')}catch(e){}</script>
+<script type="application/ld+json" nonce="<?= $cspNonce ?>"><?= json_encode($jsonLd, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?></script>
 </head>
 <body class="min-h-screen">
 <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:start-2 focus:z-50 lp-card rounded-lg px-3 py-2"><?= $lang === 'fa' ? 'رفتن به محتوا' : 'Skip to content' ?></a>
@@ -386,10 +388,10 @@ $jsonLd = [
   </div>
 </footer>
 
-<script>
+<script nonce="<?= $cspNonce ?>">
 (function () {
   var UI = <?= json_encode(['make' => $UI['make'], 'making' => $UI['making'], 'send' => $UI['send'], 'sending' => $UI['sending'], 'sent' => $UI['sent'], 'err' => $UI['err'], 'need_name' => $UI['need_name']], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
-  var BASE = <?= json_encode($basePath) ?>;
+  var BASE = <?= json_encode($basePath, 0 | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   // حالت نمایش (همان کلید ui_theme برنامه): روشن ↔ تیره
   document.getElementById('lp-theme').addEventListener('click', function () {
     var dark = !document.documentElement.classList.contains('dark');
@@ -481,7 +483,7 @@ $jsonLd = [
     lead.addEventListener('submit', function (ev) {
       ev.preventDefault();
       var msg = document.getElementById('lp-lead-msg'), btn = lead.querySelector('button[type=submit] span');
-      var body = {}; ['name', 'mobile', 'org', 'cards', 'email', 'message', 'website', 'ts'].forEach(function (k) { body[k] = lead[k].value; }); body.lang = <?= json_encode($lang) ?>;
+      var body = {}; ['name', 'mobile', 'org', 'cards', 'email', 'message', 'website', 'ts'].forEach(function (k) { body[k] = lead[k].value; }); body.lang = <?= json_encode($lang, 0 | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
       lead.querySelector('button[type=submit]').disabled = true; btn.textContent = UI.sending; msg.classList.add('hidden');
       fetch(BASE + 'api.php?action=submit_lead', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: JSON.stringify(body) })
         .then(function (r) { return r.json().then(function (d) { return { ok: r.ok && !d.error, d: d }; }); })
@@ -500,9 +502,9 @@ $jsonLd = [
   if (demo) {
     var loading = null;
     var load = function (src) { return new Promise(function (res, rej) { var s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); };
-    var scripts = <?= json_encode([$asset('assets/react.production.min.js'), $asset('assets/react-dom.production.min.js'), $asset('assets/icons.js'), $asset('assets/qrious.min.js'), $asset('assets/demo.js')]) ?>;
+    var scripts = <?= json_encode([$asset('assets/react.production.min.js'), $asset('assets/react-dom.production.min.js'), $asset('assets/icons.js'), $asset('assets/qrious.min.js'), $asset('assets/demo.js')], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     var ensure = function () { if (!loading) loading = scripts.reduce(function (p, s) { return p.then(function () { return load(s); }); }, Promise.resolve()); return loading; };
-    demo.photo.addEventListener('change', function () { var f = demo.photo.files[0]; document.getElementById('lp-photo-name').textContent = f ? '✓ ' + f.name : <?= json_encode($UI['photo'], JSON_UNESCAPED_UNICODE) ?>; });
+    demo.photo.addEventListener('change', function () { var f = demo.photo.files[0]; document.getElementById('lp-photo-name').textContent = f ? '✓ ' + f.name : <?= json_encode($UI['photo'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>; });
     demo.addEventListener('pointerenter', function () { ensure().catch(function () { loading = null; }); }, { once: true });
     demo.addEventListener('submit', function (ev) {
       ev.preventDefault();
@@ -512,11 +514,11 @@ $jsonLd = [
       var stage = document.getElementById('lp-demo-stage');
       ensure().then(function () {
         return window.CardDemo.render(stage, {
-          name: name, role: demo.role.value.trim(), photoFile: demo.photo.files[0] || null, lang: <?= json_encode($lang) ?>,
-          org: <?= json_encode($UI['sample_org'], JSON_UNESCAPED_UNICODE) ?>, logoUrl: <?= json_encode($logoSrc) ?>,
-          colors: <?= json_encode($theme) ?>, siteUrl: <?= json_encode($abs($lang === 'en' ? 'en' : '')) ?>,
-          orderHref: <?= json_encode($common['showPricing'] ? '#pricing' : $orderUrl()) ?>,
-          labels: <?= json_encode(array_intersect_key($UI, array_flip(['show_front', 'show_back', 'pause_rotation', 'play_rotation', 'view_3d', 'showcase_hint', 'cta_order', 'again'])) + ['2d' => '2D', 'canvas' => 'canvas'], JSON_UNESCAPED_UNICODE) ?>,
+          name: name, role: demo.role.value.trim(), photoFile: demo.photo.files[0] || null, lang: <?= json_encode($lang, 0 | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+          org: <?= json_encode($UI['sample_org'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>, logoUrl: <?= json_encode($logoSrc) ?>,
+          colors: <?= json_encode($theme, 0 | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>, siteUrl: <?= json_encode($abs($lang === 'en' ? 'en' : '')) ?>,
+          orderHref: <?= json_encode($common['showPricing'] ? '#pricing' : $orderUrl(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+          labels: <?= json_encode(array_intersect_key($UI, array_flip(['show_front', 'show_back', 'pause_rotation', 'play_rotation', 'view_3d', 'showcase_hint', 'cta_order', 'again'])) + ['2d' => '2D', 'canvas' => 'canvas'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
           onAgain: function () { demo.name.focus(); demo.name.select(); }
         });
       }).then(function () {
