@@ -79,13 +79,15 @@ $UI = [
         'sample_org' => 'سازمان نمونه', 'cta_order' => 'این کارت را با طرح سازمان خودم می‌خواهم', 'per' => 'تومان', 'contact_us' => 'تماس بگیرید', 'order_now' => 'سفارش آنلاین', 'popular' => 'پیشنهاد ما',
         'cards' => 'کارت', 'unlimited' => 'نامحدود', 'days' => 'روز', 'mobile' => 'شماره‌ی موبایل', 'org' => 'نام سازمان', 'email' => 'ایمیل (اختیاری)', 'count' => 'تعداد تقریبی کارت', 'msg' => 'توضیحات', 'send' => 'ارسال درخواست', 'sending' => 'در حال ارسال…',
         'sent' => 'درخواست شما ثبت شد. به‌زودی با شما تماس می‌گیریم.', 'err' => 'ارسال انجام نشد. دوباره تلاش کنید.', 'terms' => 'قوانین و مقررات', 'privacy' => 'حریم خصوصی', 'about' => 'تماس با ما', 'rights' => 'تمامی حقوق محفوظ است.',
-        'problem' => 'امروز', 'solution' => 'با این سامانه', 'home' => 'صفحه‌ی اصلی', 'lang' => 'English', 'show_front' => 'روی کارت', 'show_back' => 'پشت کارت', 'pause_rotation' => 'توقف چرخش', 'play_rotation' => 'چرخش خودکار', 'view_3d' => 'نمایش سه‌بعدی کارت', 'showcase_hint' => 'برای چرخاندن، کارت را بکشید', 'phone' => 'تلفن', 'address' => 'نشانی', 'need_name' => 'نام را بنویسید.'],
+        'problem' => 'امروز', 'solution' => 'با این سامانه', 'home' => 'صفحه‌ی اصلی', 'lang' => 'English', 'show_front' => 'روی کارت', 'show_back' => 'پشت کارت', 'pause_rotation' => 'توقف چرخش', 'play_rotation' => 'چرخش خودکار', 'view_3d' => 'نمایش سه‌بعدی کارت', 'showcase_hint' => 'برای چرخاندن، کارت را بکشید', 'phone' => 'تلفن', 'address' => 'نشانی', 'need_name' => 'نام را بنویسید.',
+        'story_title' => 'استوری اینستاگرام شما', 'story_hint' => 'این استوری هم همین‌جا روی دستگاه شما ساخته شد. اعضای سازمان شما بعد از صدور کارت، تصویر یا ویدیوی آن را (با موسیقی) دانلود می‌کنند.', 'story_dl' => 'دانلود تصویر استوری', 'scene_float' => 'شناور', 'scene_neon' => 'نئونی', 'scene_lanyard' => 'آویز همایش', 'new_card' => 'کارت جدید'],
     'en' => ['features' => 'Features', 'demo' => 'Try it', 'pricing' => 'Pricing', 'faq' => 'FAQ', 'contact' => 'Contact', 'order' => 'Order', 'track' => 'Track order', 'theme' => 'Theme', 'menu' => 'Menu',
         'name' => 'Full name', 'role' => 'Job title', 'photo' => 'Photo (optional)', 'make' => 'Make my card', 'making' => 'Creating…', 'again' => 'Again', 'demo_name' => 'e.g. Sara Mohammadi', 'demo_role' => 'e.g. Design Lead',
         'sample_org' => 'Sample Organization', 'cta_order' => 'I want this with my own design', 'per' => 'Toman', 'contact_us' => 'Contact us', 'order_now' => 'Order online', 'popular' => 'Most popular',
         'cards' => 'cards', 'unlimited' => 'Unlimited', 'days' => 'days', 'mobile' => 'Mobile number', 'org' => 'Organization', 'email' => 'Email (optional)', 'count' => 'Approx. number of cards', 'msg' => 'Message', 'send' => 'Send request', 'sending' => 'Sending…',
         'sent' => 'Thanks! We will contact you shortly.', 'err' => 'Could not send. Please try again.', 'terms' => 'Terms', 'privacy' => 'Privacy', 'about' => 'Contact us', 'rights' => 'All rights reserved.',
-        'problem' => 'Today', 'solution' => 'With this platform', 'home' => 'Home', 'lang' => 'فارسی', 'show_front' => 'Front', 'show_back' => 'Back', 'pause_rotation' => 'Pause', 'play_rotation' => 'Auto-rotate', 'view_3d' => '3D card view', 'showcase_hint' => 'Drag the card to rotate it', 'phone' => 'Phone', 'address' => 'Address', 'need_name' => 'Please enter a name.'],
+        'problem' => 'Today', 'solution' => 'With this platform', 'home' => 'Home', 'lang' => 'فارسی', 'show_front' => 'Front', 'show_back' => 'Back', 'pause_rotation' => 'Pause', 'play_rotation' => 'Auto-rotate', 'view_3d' => '3D card view', 'showcase_hint' => 'Drag the card to rotate it', 'phone' => 'Phone', 'address' => 'Address', 'need_name' => 'Please enter a name.',
+        'story_title' => 'Your Instagram story', 'story_hint' => 'This story was also made right here on your device. After issuing a card, your members download an image or a video of it (with music).', 'story_dl' => 'Download story image', 'scene_float' => 'Floating', 'scene_neon' => 'Neon', 'scene_lanyard' => 'Event lanyard', 'new_card' => 'NEW CARD'],
 ][$lang];
 
 $title = $page === '' ? $C['seoTitle'] . ' | ' . $platName : $UI[$page === 'contact' ? 'about' : $page] . ' | ' . $platName;
@@ -251,7 +253,8 @@ $jsonLd = [
   <section id="features" class="max-w-6xl mx-auto px-4 py-16 lp-reveal">
     <h2 class="text-3xl font-black text-center"><?= h($C['featuresTitle']) ?></h2>
     <p class="text-center lp-muted mt-3"><?= h($C['featuresSubtitle']) ?></p>
-    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-10">
+    <?php $fc = count($C['features']); $featCols = ($fc % 4 === 0 || $fc % 3 !== 0) ? 'lg:grid-cols-4' : 'lg:grid-cols-3'; ?>
+    <div class="grid sm:grid-cols-2 <?= $featCols ?> gap-4 mt-10">
       <?php foreach ($C['features'] as $f): ?>
         <div class="lp-card rounded-3xl p-5"><span class="lp-icon w-11 h-11 rounded-2xl inline-flex items-center justify-center"><?= $ic($f['icon'] ?: 'sparkles', 'w-5 h-5') ?></span><h3 class="font-extrabold mt-4"><?= h($f['title']) ?></h3><p class="lp-muted text-sm mt-2 leading-7"><?= h($f['text']) ?></p></div>
       <?php endforeach; ?>
@@ -518,7 +521,7 @@ $jsonLd = [
           org: <?= json_encode($UI['sample_org'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>, logoUrl: <?= json_encode($logoSrc) ?>,
           colors: <?= json_encode($theme, 0 | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>, siteUrl: <?= json_encode($abs($lang === 'en' ? 'en' : '')) ?>,
           orderHref: <?= json_encode($common['showPricing'] ? '#pricing' : $orderUrl(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
-          labels: <?= json_encode(array_intersect_key($UI, array_flip(['show_front', 'show_back', 'pause_rotation', 'play_rotation', 'view_3d', 'showcase_hint', 'cta_order', 'again'])) + ['2d' => '2D', 'canvas' => 'canvas'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+          labels: <?= json_encode(array_intersect_key($UI, array_flip(['show_front', 'show_back', 'pause_rotation', 'play_rotation', 'view_3d', 'showcase_hint', 'cta_order', 'again', 'story_title', 'story_hint', 'story_dl', 'scene_float', 'scene_neon', 'scene_lanyard', 'new_card'])) + ['2d' => '2D', 'canvas' => 'canvas'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
           onAgain: function () { demo.name.focus(); demo.name.select(); }
         });
       }).then(function () {

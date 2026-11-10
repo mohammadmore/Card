@@ -649,6 +649,10 @@ function commerce_routes(PDO $pdo, array $input, array $config): array {
             require_super();
             respond(['landing' => landing_get($pdo), 'plans' => plans_get($pdo), 'integrations' => integrations_masked(integrations_get($pdo)), 'baseUrl' => app_base_url(), 'cronLastRun' => get_setting($pdo, 'cron_last_run')]);
         },
+        'GET landing_defaults' => function () {
+            require_super();
+            respond(landing_default_content());
+        },
         'POST save_landing' => function () use ($pdo, $input) {
             require_super();
             $l = landing_sanitize(in_arr($input, 'landing'));

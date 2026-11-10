@@ -50,7 +50,7 @@ function landing_default_content(): array {
             'steps' => [
                 ['title' => 'طرح کارت را بفرستید', 'text' => 'فایل خام روی و پشت کارت را برای هر رده (مثلاً کارشناس، مدیر، مهمان) آپلود کنید. سامانه‌ی شما را بر اساس همین طرح آماده می‌کنیم.'],
                 ['title' => 'لینک را برای اعضا بفرستید', 'text' => 'هر عضو با رمز سازمان وارد می‌شود، اطلاعات و عکسش را وارد می‌کند و کارتش را می‌بیند.'],
-                ['title' => 'کارت‌ها را تحویل بگیرید', 'text' => 'خروجی PDF با اندازه‌ی واقعی چاپ، تصویر، اکسل و گزارش‌های لحظه‌ای در داشبورد مدیر.'],
+                ['title' => 'کارت‌ها را تحویل بگیرید', 'text' => 'خروجی PDF با اندازه‌ی واقعی چاپ، تصویر، استوری اینستاگرام، اکسل و گزارش‌های لحظه‌ای در داشبورد مدیر.'],
             ],
             'featuresTitle' => 'هر آنچه برای صدور کارت لازم دارید',
             'featuresSubtitle' => 'یک سامانه‌ی کامل، با پنل اختصاصی برای سازمان شما',
@@ -59,10 +59,11 @@ function landing_default_content(): array {
                 ['icon' => 'qr', 'title' => 'استعلام اصالت با QR', 'text' => 'هر کارت یک کد QR دارد که با اسکن آن، اعتبار و تاریخ انقضای کارت نمایش داده می‌شود.'],
                 ['icon' => 'languages', 'title' => 'فرم چندزبانه', 'text' => 'فارسی، انگلیسی، عربی و ترکی؛ عضو هر زبانی را که بخواهد انتخاب می‌کند.'],
                 ['icon' => 'cube', 'title' => 'نمایش سه‌بعدی کارت', 'text' => 'کارت دورو بعد از صدور به صورت سه‌بعدی می‌چرخد؛ لحظه‌ای که همه به خاطر می‌سپارند.'],
+                ['icon' => 'film', 'title' => 'استوری اینستاگرام برای هر کارت', 'text' => 'عضو بعد از صدور کارت، استوری آماده‌ی عمودی (۹:۱۶) را به‌صورت تصویر یا ویدیوی ۸ ثانیه‌ای، با موسیقی یا بی‌صدا، دانلود می‌کند؛ با نام، رده‌ی جدید و QR تأیید اصالت. ظاهر، متن‌ها و موسیقی را شما یک بار تعیین می‌کنید.'],
                 ['icon' => 'chart', 'title' => 'گزارش و نمودار', 'text' => 'آمار صدور بر اساس تاریخ، رده، استان و هر فیلد انتخابی، با خروجی اکسل.'],
-                ['icon' => 'printer', 'title' => 'آماده‌ی چاپ', 'text' => 'PDF با اندازه‌ی واقعی کارت، دانلود گروهی و تصویر باکیفیت برای هر کارت.'],
-                ['icon' => 'shield', 'title' => 'امن و خصوصی', 'text' => 'رمز جداگانه برای مدیر و اعضا، قفل خودکار در برابر حدس رمز و گزارش فعالیت.'],
-                ['icon' => 'table', 'title' => 'ورود از اکسل', 'text' => 'فهرست‌های پایه (مثل رده‌ها و استان‌ها) را با یک فایل اکسل وارد کنید.'],
+                ['icon' => 'printer', 'title' => 'آماده‌ی چاپ', 'text' => 'PDF با اندازه‌ی واقعی کارت، دانلود گروهی، تصویر باکیفیت، و پوستر A4 یا پست اینستاگرام برای هر کارت.'],
+                ['icon' => 'shield', 'title' => 'امن و خصوصی', 'text' => 'رمز جداگانه برای مدیر و اعضا (حداقل ۸ کاراکتر)، قفل خودکار در برابر حدس رمز، محافظت در برابر تزریق اسکریپت و گزارش فعالیت.'],
+                ['icon' => 'table', 'title' => 'ورود از اکسل', 'text' => 'فهرست‌های پایه (مثل رده‌ها و استان‌ها) را با یک فایل اکسل وارد کنید؛ با راهنمای گام‌به‌گام و گزارش خطا برای هر ردیف.'],
             ],
             'useCasesTitle' => 'برای چه کسانی؟',
             'useCases' => [
@@ -81,6 +82,7 @@ function landing_default_content(): array {
             'pricingNote' => 'قیمت‌ها به تومان است. آماده‌سازی سامانه بر اساس طرح شما در همه‌ی پلن‌ها انجام می‌شود.',
             'faqTitle' => 'سؤالات متداول',
             'faq' => [
+                ['q' => 'استوری اینستاگرام چطور ساخته می‌شود؟ موسیقی هم دارد؟', 'a' => 'استوری روی دستگاه خود عضو ساخته می‌شود و چیزی به سرور فرستاده نمی‌شود. خروجی تصویر یا ویدیوی MP4 هشت‌ثانیه‌ای است؛ موسیقی آماده یا آهنگ مخصوص سازمان، یا بدون صدا. در بعضی مرورگرها ممکن است اینستاگرام صدای ویدیو را قطع کند؛ در این حالت ویدیو را بی‌صدا بگیرید و موسیقی را از خود اینستاگرام اضافه کنید. ارسال مستقیم به اینستاگرام ممکن نیست؛ فایل دانلود یا از منوی اشتراک‌گذاری گوشی فرستاده می‌شود.'],
                 ['q' => 'برای سفارش چه چیزی لازم است؟', 'a' => 'فایل خام روی و پشت کارت (JPG) برای هر رده، نام سازمان و فهرست اطلاعاتی که روی کارت می‌آید؛ مثل نام، کد پرسنلی و عکس.'],
                 ['q' => 'سامانه چقدر بعد از پرداخت آماده می‌شود؟', 'a' => 'معمولاً ظرف یک تا دو روز کاری. لینک سامانه و رمزها با پیامک و ایمیل برایتان ارسال می‌شود.'],
                 ['q' => 'اطلاعات و عکس اعضا کجا نگهداری می‌شود؟', 'a' => 'روی سرور داخل ایران و فقط در دسترس مدیر سازمان شما. دسترسی اعضا با رمز جداگانه است.'],
@@ -110,7 +112,7 @@ function landing_default_content(): array {
             'steps' => [
                 ['title' => 'Send your card design', 'text' => 'Upload the blank front and back of the card for each category (e.g. staff, manager, guest). We set up your system from it.'],
                 ['title' => 'Share the link with members', 'text' => 'Members sign in with your organization password, enter their details and photo, and see their card.'],
-                ['title' => 'Collect the cards', 'text' => 'True-size print PDFs, images, Excel exports and live reports in the admin dashboard.'],
+                ['title' => 'Collect the cards', 'text' => 'True-size print PDFs, images, Instagram stories, Excel exports and live reports in the admin dashboard.'],
             ],
             'featuresTitle' => 'Everything you need to issue cards',
             'featuresSubtitle' => 'A complete platform with a dedicated portal for your organization',
@@ -119,10 +121,11 @@ function landing_default_content(): array {
                 ['icon' => 'qr', 'title' => 'QR verification', 'text' => 'Each card carries a QR code that shows its validity and expiry date when scanned.'],
                 ['icon' => 'languages', 'title' => 'Multilingual forms', 'text' => 'Persian, English, Arabic and Turkish — members pick their language.'],
                 ['icon' => 'cube', 'title' => '3D card reveal', 'text' => 'Double-sided cards spin in 3D right after issuing — the moment everyone remembers.'],
+                ['icon' => 'film', 'title' => 'Instagram story for every card', 'text' => 'After issuing, each member downloads a ready 9:16 story as an image or an 8-second video, with music or silent — with their name, new rank and a verification QR. You set the look, texts and music once.'],
                 ['icon' => 'chart', 'title' => 'Reports & charts', 'text' => 'Issuing stats by date, role, region or any choice field, with Excel export.'],
-                ['icon' => 'printer', 'title' => 'Print-ready', 'text' => 'True-size PDFs, bulk download and high-quality images for every card.'],
-                ['icon' => 'shield', 'title' => 'Secure & private', 'text' => 'Separate admin and member passwords, brute-force lockout and an activity log.'],
-                ['icon' => 'table', 'title' => 'Excel import', 'text' => 'Bring in base lists (like roles and provinces) from a single spreadsheet.'],
+                ['icon' => 'printer', 'title' => 'Print-ready', 'text' => 'True-size PDFs, bulk download, high-quality images, plus an A4 poster or social post for every card.'],
+                ['icon' => 'shield', 'title' => 'Secure & private', 'text' => 'Separate admin and member passwords (8+ characters), brute-force lockout, script-injection protection and an activity log.'],
+                ['icon' => 'table', 'title' => 'Excel import', 'text' => 'Bring in base lists (like roles and provinces) from a single spreadsheet — with a step-by-step guide and per-row error reports.'],
             ],
             'useCasesTitle' => 'Who is it for?',
             'useCases' => [
@@ -141,6 +144,7 @@ function landing_default_content(): array {
             'pricingNote' => 'Prices are in Iranian Toman. Setting up your system from your design is included in every plan.',
             'faqTitle' => 'Frequently asked questions',
             'faq' => [
+                ['q' => 'How is the Instagram story made? Does it have music?', 'a' => 'The story is created on the member\'s own device and nothing is uploaded to our server. You get an image or an 8-second MP4 — with built-in or your own music, or silent. Some browsers produce audio Instagram may mute; in that case export silent and add music inside Instagram. Direct posting to Instagram is not possible: download the file or use your phone\'s share sheet.'],
                 ['q' => 'What do I need to order?', 'a' => 'The blank front and back of the card (JPG) for each category, your organization name, and the list of details that go on the card — like name, staff number and photo.'],
                 ['q' => 'How soon is the system ready after payment?', 'a' => 'Usually within one to two business days. The link and passwords are sent to you by SMS and email.'],
                 ['q' => 'Where are member details and photos stored?', 'a' => 'On servers in Iran, visible only to your organization’s admin. Members sign in with a separate password.'],

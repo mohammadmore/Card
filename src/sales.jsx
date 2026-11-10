@@ -198,7 +198,7 @@ function TestBox({ channel, placeholder, label = 'آزمایش', state, onTest }
 
 // ---------------- محتوای صفحه‌ی معرفی ----------------
 function LandingTab({ kit }) {
-    const { apiGet, apiPost, Icon, notifyError, notifySuccess, uploadImageFile } = kit;
+    const { apiGet, apiPost, Icon, notifyError, notifySuccess, uploadImageFile, askConfirm } = kit;
     const [data, setData] = useState(null); const [lang, setLang] = useState('fa'); const [saving, setSaving] = useState(false); const [dirty, setDirty] = useState(false);
     useEffect(() => { apiGet('sales_settings').then(r => setData(r.landing)).catch(notifyError); }, []);
     if (!data) return <p className="text-center text-slate-500 py-10">در حال بارگذاری…</p>;
@@ -207,6 +207,11 @@ function LandingTab({ kit }) {
     const setC = (k, v) => { setData(d => ({ ...d, common: { ...d.common, [k]: v } })); setDirty(true); };
     const save = async () => { setSaving(true); try { const r = await apiPost('save_landing', { landing: data }); setData(r.landing); setDirty(false); notifySuccess('صفحه‌ی معرفی ذخیره شد.'); } catch (e) { notifyError(e); } setSaving(false); };
     const dir = lang === 'fa' ? 'rtl' : 'ltr';
+    // متن‌های جدید پیش‌فرض سامانه (مثل امکانات تازه) روی محتوای قبلاً ذخیره‌شده اثر نمی‌گذارند؛ با این دکمه‌ها هر بخش به پیش‌فرض به‌روز برمی‌گردد (تا «ذخیره» نزنید اعمال نمی‌شود)
+    const resetSection = async (keys, name) => {
+        if (askConfirm && !(await askConfirm(`بخش «${name}» (${lang === 'fa' ? 'فارسی' : 'English'}) به متن پیش‌فرض به‌روز برگردد؟ تغییرات سفارشی همین بخش از بین می‌رود، ولی تا «ذخیره» نزنید اعمال نمی‌شود.`, { okText: 'بازگردانی' }))) return;
+        try { const d = await apiGet('landing_defaults'); setData(o => ({ ...o, [lang]: { ...o[lang], ...Object.fromEntries(keys.map(k => [k, d[lang][k]])) } })); setDirty(true); } catch (e) { notifyError(e); }
+    };
     const text = (k, label, opts = {}) => <div className={opts.wide ? 'sm:col-span-2' : ''}><label className={lbl} htmlFor={`lt-${k}`}>{label}</label>{opts.area ? <textarea id={`lt-${k}`} rows={opts.rows || 3} dir={dir} value={L[k]} onChange={e => setL(k, e.target.value)} className={inp} /> : <input id={`lt-${k}`} dir={dir} value={L[k]} onChange={e => setL(k, e.target.value)} className={inp} />}</div>;
     const ctext = (k, label, opts = {}) => <div><label className={lbl} htmlFor={`lc-${k}`}>{label}</label><input id={`lc-${k}`} dir={opts.dir || 'ltr'} value={C[k]} onChange={e => setC(k, e.target.value)} placeholder={opts.ph} className={`${inp} ${opts.dir === 'rtl' ? '' : 'text-left'}`} /></div>;
     const upload = async (file, cb) => { if (!file) return; const url = await uploadImageFile(file, { keepTransparency: true, maxSize: 1200 }); if (url) cb(url); };
@@ -215,6 +220,7 @@ function LandingTab({ kit }) {
             <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 px-4 sm:px-6 py-3 bg-white/80 backdrop-blur border-b flex flex-wrap gap-2 items-center">
                 <div role="tablist" aria-label="زبان محتوا" className="flex gap-1 bg-slate-100 rounded-xl p-1">{[['fa', 'فارسی'], ['en', 'English']].map(([k, l]) => <button key={k} role="tab" aria-selected={lang === k} onClick={() => setLang(k)} className={`px-3 py-1.5 rounded-lg text-sm font-bold ${lang === k ? 'bg-white shadow text-indigo-700' : 'text-slate-600'}`}>{l}</button>)}</div>
                 <span className="text-xs text-slate-500">متن‌های هر زبان جداست؛ تنظیمات مشترک (تماس، اینماد، نمایش بخش‌ها) پایین صفحه است.</span>
+                <details className="relative"><summary className="cursor-pointer text-xs font-bold text-indigo-700 select-none px-2 py-1.5 rounded-lg bg-indigo-50">متن پیش‌فرض جدید ▾</summary><div className="absolute z-20 mt-1 p-2 glass-strong rounded-xl shadow-xl flex flex-col gap-1 min-w-[200px]">{[[['features', 'featuresTitle', 'featuresSubtitle'], 'امکانات'], [['steps', 'stepsTitle'], 'مراحل کار'], [['faq', 'faqTitle'], 'سؤالات متداول']].map(([ks, nm]) => <button key={nm} type="button" onClick={() => resetSection(ks, nm)} className="text-start text-sm font-bold px-3 py-1.5 rounded-lg hover:bg-indigo-50">بازگرداندن «{nm}»</button>)}</div></details>
                 <button onClick={save} disabled={saving || !dirty} className="ms-auto btn-grad px-5 py-2 rounded-xl font-bold">{saving ? 'در حال ذخیره…' : dirty ? 'ذخیره‌ی تغییرات' : 'ذخیره شد'}</button>
             </div>
             <div className="grid xl:grid-cols-2 gap-4" dir="rtl">
