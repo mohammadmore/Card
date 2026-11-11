@@ -208,7 +208,7 @@ function set_setting(PDO $pdo, string $key, string $value): void {
 function platform_defaults(): array {
     global $config;
     return [
-        'name' => 'پلتفرم یکپارچه صدور کارت',
+        'name' => 'پلتفرم یکپارچه صدور کارت', 'nameEn' => '',
         'logoUrl' => '', 'logoUrlDark' => '', 'faviconUrl' => '',
         'footer' => ['show' => true, 'line1' => 'Powered by Asva Studio', 'line2' => 'توسعه یافته توسط شرکت داده‌پردازان اسوا', 'phone' => '09966697806', 'link' => 'https://t.me/+989966697806'],
         'defaultTheme' => DEFAULT_THEME, 'superTheme' => DEFAULT_THEME,
@@ -232,7 +232,7 @@ function platform_settings(PDO $pdo): array {
 }
 /** نسخه‌ی قابل ارسال به مرورگر؛ تنظیمات امنیتی فقط برای سوپرادمین. */
 function platform_public(array $ps, bool $super): array {
-    $pub = array_intersect_key($ps, array_flip(['name', 'logoUrl', 'logoUrlDark', 'faviconUrl', 'footer', 'defaultTheme', 'superTheme', 'idleMinutes']));
+    $pub = array_intersect_key($ps, array_flip(['name', 'nameEn', 'logoUrl', 'logoUrlDark', 'faviconUrl', 'footer', 'defaultTheme', 'superTheme', 'idleMinutes']));
     if ($super) { $pub['loginMaxAttempts'] = $ps['loginMaxAttempts']; $pub['loginLockMinutes'] = $ps['loginLockMinutes']; }
     return $pub;
 }
@@ -837,6 +837,7 @@ $routes = [
             $new['name'] = trim(preg_replace('/\s+/u', ' ', in_str($input, 'name', 80)));
             if ($new['name'] === '') fail_field('نام پلتفرم نمی‌تواند خالی باشد.', 'name');
         }
+        if (array_key_exists('nameEn', $input)) $new['nameEn'] = trim(preg_replace('/\s+/u', ' ', in_str($input, 'nameEn', 80)));
         foreach (['logoUrl' => 'لوگو', 'logoUrlDark' => 'لوگوی حالت تیره', 'faviconUrl' => 'آیکون تب'] as $k => $label) {
             if (!array_key_exists($k, $input)) continue;
             $v = trim(in_str($input, $k, 1000));
@@ -944,6 +945,8 @@ $routes = [
         $data['orderId'] = preg_match('/^ord_[a-f0-9]{16}$/', (string)($input['orderId'] ?? '')) ? (string)$input['orderId'] : (string)($existing['orderId'] ?? '');
         // پوستر و استوری (صحنه‌ها، پس‌زمینه، فیلدهای مخفی)
         $data['poster'] = sanitize_poster($input['poster'] ?? null, $data);
+        // قالب نام فایل خروجی کارت (مثلاً «{f_gender} {f_name}»)؛ نام فایل در مرورگر از آن ساخته می‌شود
+        $data['fileNameTpl'] = mb_substr(trim(preg_replace('/\s+/u', ' ', (string)($input['fileNameTpl'] ?? ''))), 0, 120);
         // لوگوی اختیاری برای حالت تیره (خالی = همان لوگوی عادی)
         $data['logoUrlDark'] = trim(in_str($input, 'logoUrlDark', 1000));
         if ($data['logoUrlDark'] !== '' && !valid_image_url($data['logoUrlDark'])) fail_field('لینک لوگوی حالت تیره نامعتبر است. یک فایل آپلود کنید یا لینکی که با https:// شروع می‌شود وارد کنید.', 'logoUrlDark');

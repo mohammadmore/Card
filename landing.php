@@ -48,6 +48,8 @@ $plans = array_values(array_filter($plans, fn($p) => is_array($p) && ($p['active
 
 $lang = (($_GET['lang'] ?? '') === 'en' || ($_GET['lang'] ?? '') === 'en/') && $common['showEnglish'] ? 'en' : 'fa';
 $C = $L[$lang]; $rtl = $lang === 'fa';
+// نام پلتفرم در نسخه‌ی انگلیسی: نام انگلیسی تنظیم‌شده؛ وگرنه اگر نام فارسی است یک نام عمومی انگلیسی
+if ($lang === 'en') { $nameEn = trim((string)($plat['nameEn'] ?? '')); if ($nameEn !== '') $platName = $nameEn; elseif (preg_match('/\p{Arabic}/u', $platName)) $platName = 'Online Card Issuing Platform'; }
 $page = in_array($_GET['page'] ?? '', ['terms', 'privacy', 'contact', 'sitemap'], true) ? $_GET['page'] : '';
 
 // --- نشانی‌ها ---

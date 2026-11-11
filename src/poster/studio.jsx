@@ -25,7 +25,7 @@ const COARSE = typeof window !== 'undefined' && window.matchMedia && window.matc
  * استودیوی کاربر نهایی: همه‌ی طراحی (صحنه‌ها، جنس کارت، نوشته‌ها، QR، موسیقی، فیلدهای مخفی) را سوپرادمین در ویزارد تعیین کرده؛
  * کاربر فقط (اگر چند سبک تعریف شده باشد) یک سبک را انتخاب می‌کند و تصویر یا ویدیوی استوری را می‌گیرد.
  */
-function Studio({ tenant, cardData, front, back, lang = 'fa', ownerName = '', orgName = '', issuedAt = '', renderSides, ownerOf, verifyUrl, formatDate, toNum = (x) => x, notify, Icon, onClose }) {
+function Studio({ tenant, cardData, front, back, lang = 'fa', ownerName = '', orgName = '', issuedAt = '', renderSides, fileBase: fileBaseProp = '', ownerOf, verifyUrl, formatDate, toNum = (x) => x, notify, Icon, onClose }) {
     const S = STR[lang] || STR.en; const rtl = lang === 'fa' || lang === 'ar'; const P = tenant.poster || {};
     const allowed = (P.scenes && P.scenes.length ? P.scenes : SCENES).filter(s => SCENES.includes(s));
     const rankField = useMemo(() => { const sel = (tenant.fields || []).filter(f => f.type === 'select'); return sel.find(f => f.isConditionTrigger) || sel[0] || null; }, [tenant]);
@@ -80,7 +80,7 @@ function Studio({ tenant, cardData, front, back, lang = 'fa', ownerName = '', or
     }, [input]);
 
     const renderFinal = () => { const c = document.createElement('canvas'); renderFrame(c, prepare({ ...input, kind, size: { w: sz.w, h: sz.h } }), { t: STILL[scene] ?? 0.4, ui: 1, fx: kind === 'story' ? 0.3 : -1 }); return c; };
-    const fileBase = `${(ownerName || 'card').replace(/[\\/:*?"<>|\s]+/g, '_')}-${mode}-${scene}`;
+    const fileBase = `${fileBaseProp || (ownerName || 'card').replace(/[\\/:*?"<>|\s]+/g, '_')}-${mode}-${scene}`;
     const imageBlob = async () => canvasToBlob(renderFinal(), 'image/jpeg', 0.93);
     const download = async () => { setBusy('img'); try { downloadBlob(await imageBlob(), `${fileBase}.jpg`); } catch (e) { notify(S.videoErr); } setBusy(''); };
     const downloadPdf = () => { try { downloadBlob(canvasesToPdf([renderFinal()], { printW: 210, printH: 297 }), `${fileBase}.pdf`); } catch (e) { notify(S.videoErr); } };

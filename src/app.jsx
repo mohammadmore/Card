@@ -318,7 +318,7 @@ const THEME_PRESETS = [
 const themeOf = (tn) => ({ ...DEFAULT_THEME, ...((tn && tn.theme) || {}) });
 // مقادیر پیش‌فرض باید با platform_defaults() در api.php یکی باشند
 const DEFAULT_PLATFORM = {
-    name: 'پلتفرم یکپارچه صدور کارت', logoUrl: '', logoUrlDark: '', faviconUrl: '',
+    name: 'پلتفرم یکپارچه صدور کارت', nameEn: '', logoUrl: '', logoUrlDark: '', faviconUrl: '',
     footer: { show: true, line1: 'Powered by Asva Studio', line2: 'توسعه یافته توسط شرکت داده‌پردازان اسوا', phone: '09966697806', link: 'https://t.me/+989966697806' },
     defaultTheme: DEFAULT_THEME, superTheme: DEFAULT_THEME, idleMinutes: 60, loginMaxAttempts: 5, loginLockMinutes: 15,
 };
@@ -524,6 +524,7 @@ const fieldPrintVal = (field, val0, userData, config, showActions) => {
 /** فیلد «ترکیبی»: متن آن از قالبی مثل «{جنسیت} {نام}» ساخته می‌شود و مقدار چاپی فیلدهای دیگر را کنار هم می‌گذارد. */
 const isComposite = (f) => !!f && f.type === 'text' && !!f.composite;
 const composeText = (field, userData, config, showActions) => String(field.composeTpl || '').replace(/\{([^{}]+)\}/g, (m, id) => {
+    if (id === 'org') return config.orgName || ''; if (id === 'date') return String(userData._issued || new Date().toISOString()).slice(0, 10);
     const f = (config.fields || []).find(x => x.id === id); if (!f || f.id === field.id || isComposite(f) || ['photo', 'barcode', 'qrcode', 'stars'].includes(f.type)) return '';
     const raw = userData[id]; if (!showActions && !raw && !(f.type === 'date' && f.dateSource && f.dateSource !== 'input')) return f.label || ''; // پیش‌نمایش طراحی: نام فیلد
     return fieldPrintVal(f, raw, userData, config, showActions);
@@ -604,10 +605,21 @@ const renderCardSide = async ({ config, userData, side, bgUrl, baseBgUrl, showAc
             let drawX = field.x; if (ctx.textAlign === 'center') drawX = field.x + field.w / 2; if (ctx.textAlign === 'right') drawX = field.x + field.w;
             if (field.fillType === 'linear') { const grad = ctx.createLinearGradient(field.x, field.y, field.x + field.w, field.y); grad.addColorStop(0, field.color || '#000000'); grad.addColorStop(1, field.color2 || '#ffffff'); ctx.fillStyle = grad; } else ctx.fillStyle = field.color || '#000000';
             if (field.hasShadow) { ctx.shadowColor = field.shadowColor || '#000000'; ctx.shadowBlur = field.shadowBlur || 4; }
+            // رنگ نوشته به‌ازای شرط گرافیکی فعال (مثلاً رنگ دیگر برای هر رده)
+            if (activeCondition) { const ov = (activeCondition.fieldColors || {})[field.id] || activeCondition.allTextColor; if (ov) ctx.fillStyle = ov; }
+            const sw = Number(field.strokeWidth) || 2; const sPos = field.strokePos || 'center';
+            const strokeJoin = () => { ctx.lineJoin = 'round'; ctx.miterLimit = 2; };
             lines.forEach((line, i) => {
                 const y = firstY + i * lineH; const txt = mark(line);
+                if (field.hasStroke && sPos === 'outside') { ctx.save(); ctx.shadowBlur = 0; strokeJoin(); ctx.strokeStyle = field.strokeColor || '#ffffff'; ctx.lineWidth = sw * 2; ctx.strokeText(txt, drawX, y); ctx.restore(); } // نیمه‌ی داخلی زیر خود متن پنهان می‌شود
                 ctx.fillText(txt, drawX, y);
-                if (field.hasStroke) { ctx.save(); ctx.shadowBlur = 0; ctx.strokeStyle = field.strokeColor || '#ffffff'; ctx.lineWidth = field.strokeWidth || 2; ctx.strokeText(txt, drawX, y); ctx.restore(); }
+                if (field.hasStroke && sPos === 'center') { ctx.save(); ctx.shadowBlur = 0; strokeJoin(); ctx.strokeStyle = field.strokeColor || '#ffffff'; ctx.lineWidth = sw; ctx.strokeText(txt, drawX, y); ctx.restore(); }
+                if (field.hasStroke && sPos === 'inside') { // فقط نیمه‌ی داخل حروف: حاشیه روی بوم موقت با ماسک خودِ متن
+                    const pad = Math.ceil(sw * 2 + 4); const bx = field.x - pad, by = field.y - pad; const tc = document.createElement('canvas'); tc.width = Math.ceil(field.w + pad * 2); tc.height = Math.ceil(field.h + pad * 2); const t = tc.getContext('2d');
+                    t.font = ctx.font; t.direction = ctx.direction; t.textAlign = ctx.textAlign; t.textBaseline = ctx.textBaseline; if ('letterSpacing' in t) t.letterSpacing = ctx.letterSpacing; t.translate(-bx, -by);
+                    t.lineJoin = 'round'; t.strokeStyle = field.strokeColor || '#ffffff'; t.lineWidth = sw * 2; t.strokeText(txt, drawX, y); t.setTransform(1, 0, 0, 1, 0, 0); t.globalCompositeOperation = 'destination-in'; t.translate(-bx, -by); t.fillStyle = '#000'; t.fillText(txt, drawX, y);
+                    ctx.save(); ctx.shadowBlur = 0; ctx.drawImage(tc, bx, by); ctx.restore();
+                }
             });
             ctx.restore();
         }
@@ -683,7 +695,9 @@ function ImageCropperModal({ src, shape, aspect = 1, targetW = 0, t, onConfirm, 
             // نسخه‌ی کوچک‌شده‌ی پیش‌نمایش فقط یک بار ساخته می‌شود (نه در هر جابه‌جایی کادر)
             const preview = document.createElement('canvas'); preview.width = Math.max(1, Math.round(drawW * DPR)); preview.height = Math.max(1, Math.round(drawH * DPR));
             drawImageHQ(preview.getContext('2d'), img, 0, 0, img.width, img.height, 0, 0, preview.width, preview.height);
-            setImgObj({ img, preview, scale, drawX, drawY, drawW, drawH });
+            // تصویر دارای بخش شفاف (PNG بدون پس‌زمینه): شفافیت حفظ می‌شود تا پشت عکس روی کارت خالی بماند
+            let hasAlpha = false; try { const sw = Math.min(128, img.width), sh = Math.min(128, img.height); const sc = document.createElement('canvas'); sc.width = sw; sc.height = sh; const sx = sc.getContext('2d'); sx.drawImage(img, 0, 0, sw, sh); const dd = sx.getImageData(0, 0, sw, sh).data; for (let i = 3; i < dd.length; i += 4) if (dd[i] < 250) { hasAlpha = true; break; } } catch (e) { }
+            setImgObj({ img, preview, scale, drawX, drawY, drawW, drawH, hasAlpha });
             let w = drawW * 0.8; let h = w / ratio; if (h > drawH * 0.8) { h = drawH * 0.8; w = h * ratio; }
             setCropBox({ w, h, x: drawX + (drawW - w) / 2, y: drawY + (drawH - h) / 2 });
         }).catch(() => { notify('خطا در خواندن تصویر'); onCancel(); });
@@ -711,10 +725,14 @@ function ImageCropperModal({ src, shape, aspect = 1, targetW = 0, t, onConfirm, 
     const confirm = () => {
         if (!imgObj) return;
         const srcW = cropBox.w / imgObj.scale; const srcH = cropBox.h / imgObj.scale;
-        const outW = Math.max(1, Math.round(Math.min(1200, srcW))); const outH = Math.max(1, Math.round(outW / ratio));
-        const finalC = document.createElement('canvas'); finalC.width = outW; finalC.height = outH; const ctx = finalC.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, outW, outH);
-        drawImageHQ(ctx, imgObj.img, (cropBox.x - imgObj.drawX) / imgObj.scale, (cropBox.y - imgObj.drawY) / imgObj.scale, srcW, srcH, 0, 0, outW, outH);
-        onConfirm(finalC.toDataURL('image/jpeg', 0.85));
+        const render = (maxW, alpha) => {
+            const outW = Math.max(1, Math.round(Math.min(maxW, srcW))); const outH = Math.max(1, Math.round(outW / ratio));
+            const finalC = document.createElement('canvas'); finalC.width = outW; finalC.height = outH; const ctx = finalC.getContext('2d'); if (!alpha) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, outW, outH); }
+            drawImageHQ(ctx, imgObj.img, (cropBox.x - imgObj.drawX) / imgObj.scale, (cropBox.y - imgObj.drawY) / imgObj.scale, srcW, srcH, 0, 0, outW, outH);
+            return finalC.toDataURL(alpha ? 'image/png' : 'image/jpeg', 0.85);
+        };
+        if (imgObj.hasAlpha) { let w = 1000, url = render(w, true); while (url.length > 2.4e6 && w > 300) { w = Math.round(w * 0.75); url = render(w, true); } onConfirm(url); return; } // PNG شفاف؛ سقف حجم سرور ۳ مگابایت است
+        onConfirm(render(1200, false));
     };
     return (<div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4"><div role="dialog" aria-modal="true" aria-label={t('crop_title')} className="bg-white rounded-3xl p-6 w-full max-w-sm flex flex-col items-center shadow-2xl"><h3 className="font-bold text-lg mb-4">{t('crop_title')}</h3><div className="relative"><canvas ref={canvasRef} width={CANVAS_SIZE * DPR} height={CANVAS_SIZE * DPR} style={{ width: CANVAS_SIZE, height: 'auto' }} className="bg-slate-100 rounded-xl cursor-crosshair touch-none shadow-inner max-w-full" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} />
                 {lowQuality && <p role="status" className="mt-3 w-full flex items-start gap-2 text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-2.5"><Icon name="TriangleAlert" className="w-4 h-4 shrink-0 mt-0.5" /><span>{t('crop_low_quality')}</span></p>}</div><p className="text-xs text-slate-500 mt-4 text-center leading-relaxed">{t('crop_desc')}</p><div className="w-full mt-6 flex gap-3"><button onClick={onCancel} className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl">{t('cancel')}</button><button onClick={confirm} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl">{t('confirm_crop')}</button></div></div></div>);
@@ -754,7 +772,7 @@ const openPosterStudio = async ({ config, userData, front, back, t, showActions 
     try {
         const S = await loadPosterStudio(); const lang = (t && t.lang) || 'fa'; const toNum = lang === 'fa' ? (x) => toPersianNum(String(x)) : (x) => x;
         S.open({
-            tenant: config, cardData: userData, front, back, lang, ownerName: cardOwnerName(config, userData), orgName: tenantText(config, 'orgName', lang), issuedAt: userData._issued || '',
+            tenant: config, cardData: userData, front, back, lang, ownerName: cardOwnerName(config, userData), fileBase: (config.fileNameTpl || '').trim() ? cardFileBase(config, userData) : '', orgName: tenantText(config, 'orgName', lang), issuedAt: userData._issued || '',
             renderSides: (ud) => renderSidesFor(config, ud, showActions), ownerOf: (cd) => cardOwnerName(config, cd), verifyUrl, toNum, notify, Icon,
             formatDate: (str) => String(formatDateTime(String(str).slice(0, 10), lang)),
         });
@@ -790,12 +808,12 @@ function CardLivePreview({ config, userData = {}, showActions = false, showcase 
 
     const [format, setFormat] = useState('jpg'); const [busy, setBusy] = useState('');
     const canvasesNow = () => [frontCanvasRef.current, single ? null : backCanvasRef.current].filter(Boolean);
-    const sideNames = single ? ['Card'] : ['Card-Front', 'Card-Back'];
+    const fileBase = cardFileBase(config, userData); const sideNames = single ? [fileBase] : [`${fileBase}-Front`, `${fileBase}-Back`];
     const toBlob = (canvas) => new Promise((resolve, reject) => { try { canvas.toBlob(b => b ? resolve(b) : reject(new Error('blob')), format === 'png' ? 'image/png' : 'image/jpeg', 0.95); } catch (e) { reject(e); } });
     const download = async (idx) => { try { downloadBlob(await toBlob(canvasesNow()[idx]), `${sideNames[idx]}.${format}`); } catch (e) { notify(t('bg_cors_error')); } };
     const hasPrintSize = Number(config.printW) > 0 && Number(config.printH) > 0;
     const makePdf = () => canvasesToPdf(canvasesNow(), { printW: Number(config.printW) || 0, printH: Number(config.printH) || 0 });
-    const downloadPdf = async () => { setBusy('pdf'); try { downloadBlob(makePdf(), 'Card.pdf'); } catch (e) { notify(t('bg_cors_error')); } setBusy(''); };
+    const downloadPdf = async () => { setBusy('pdf'); try { downloadBlob(makePdf(), `${fileBase}.pdf`); } catch (e) { notify(t('bg_cors_error')); } setBusy(''); };
     // اشتراک‌گذاری مستقیم فایل (موبایل: پیام‌رسان‌ها، گالری و ...)
     const canShareFiles = typeof navigator !== 'undefined' && !!navigator.canShare && !!window.File;
     const share = async () => {
@@ -810,7 +828,7 @@ function CardLivePreview({ config, userData = {}, showActions = false, showcase 
     // چاپ: اگر اندازه‌ی چاپ تعیین شده باشد، PDF با ابعاد دقیق باز می‌شود تا از همان چاپ شود
     const print = () => {
         if (!hasPrintSize) { window.print(); return; }
-        try { const url = URL.createObjectURL(makePdf()); const w = window.open(url, '_blank'); if (!w) downloadBlob(makePdf(), 'Card.pdf'); setTimeout(() => URL.revokeObjectURL(url), 60000); } catch (e) { notify(t('bg_cors_error')); }
+        try { const url = URL.createObjectURL(makePdf()); const w = window.open(url, '_blank'); if (!w) downloadBlob(makePdf(), `${fileBase}.pdf`); setTimeout(() => URL.revokeObjectURL(url), 60000); } catch (e) { notify(t('bg_cors_error')); }
     };
     // بوم با حفظ نسبت ابعاد اصلی نمایش داده می‌شود (افقی، عمودی یا مربع) و ارتفاعش از صفحه بیرون نمی‌زند.
     const sheet = (ref, label) => (<div className="card-sheet flex flex-col items-center justify-center group min-w-0"><div className="relative rounded-2xl overflow-hidden shadow-2xl transition-transform group-hover:scale-[1.02] border border-slate-200 max-w-full"><canvas ref={ref} role="img" aria-label={label} className="block bg-white max-w-full h-auto" style={{ maxHeight: '72vh', width: 'auto' }}></canvas></div></div>);
@@ -1459,10 +1477,10 @@ function PropertiesSidebarPanel({ data, setData, selectedFieldId, onDelete, onSe
                         {selectedField.multiline && selectedField.type !== 'date' && <div><label className="text-[10px] text-slate-500 block mb-1">فاصله‌ی خطوط</label><input type="number" step="0.1" min="0.8" max="3" className="w-full border rounded px-2 py-1 text-sm bg-white text-center" value={selectedField.lineHeight || 1.3} onChange={e => updateSelected('lineHeight', Number(e.target.value))} dir="ltr" /></div>}
                     </div>
                     {selectedField.multiline && <p className="text-[10px] text-slate-500">متن داخل عرض کادر شکسته می‌شود و فونت تا جایی کوچک می‌شود که همه‌ی خطوط در ارتفاع کادر جا شوند. ارتفاع کادر را متناسب بزرگ کنید.</p>}
-                    <div className="flex gap-2"><div className="flex-1"><label className="text-[10px] text-slate-500 block mb-1">رنگ اصلی</label><div className="flex gap-1 items-center"><input type="color" value={selectedField.color || '#000000'} onChange={e => updateSelected('color', e.target.value)} className="h-6 w-8 p-0" /></div></div>{selectedField.fillType === 'linear' && <div className="flex-1"><label className="text-[10px] text-slate-500 block mb-1">رنگ دوم</label><div className="flex gap-1 items-center"><input type="color" value={selectedField.color2 || '#ffffff'} onChange={e => updateSelected('color2', e.target.value)} className="h-6 w-8 p-0" /></div></div>}</div>
+                    <div className="flex gap-2"><div className="flex-1"><label className="text-[10px] text-slate-500 block mb-1">رنگ اصلی</label><div className="flex gap-1 items-center"><input type="color" value={selectedField.color || '#000000'} onChange={e => updateSelected('color', e.target.value)} className="h-6 w-8 p-0" /></div></div>{selectedField.fillType === 'linear' && <div className="flex-1"><label className="text-[10px] text-slate-500 block mb-1">رنگ دوم</label><div className="flex gap-1 items-center"><input type="color" value={selectedField.color2 || '#ffffff'} onChange={e => updateSelected('color2', e.target.value)} className="h-6 w-8 p-0" /><button type="button" title="جابه‌جایی رنگ اول و دوم" aria-label="جابه‌جایی رنگ اول و دوم گرادیانت" onClick={() => updateSelectedMany({ color: selectedField.color2 || '#ffffff', color2: selectedField.color || '#000000' })} className="p-1 rounded border bg-white hover:bg-indigo-50 text-indigo-700"><Icon name="ArrowLeftRight" className="w-3.5 h-3.5" /></button></div></div>}</div>
                     <div className="border-t pt-2 mt-2">
                         <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer mb-2"><input type="checkbox" checked={selectedField.hasStroke || false} onChange={e => updateSelected('hasStroke', e.target.checked)} className="accent-indigo-600 rounded" /> افزودن حاشیه (Stroke)</label>
-                        {selectedField.hasStroke && <div className="flex gap-2 mb-2"><input type="color" value={selectedField.strokeColor || '#ffffff'} onChange={e => updateSelected('strokeColor', e.target.value)} className="h-6 w-8 p-0" /><input type="number" value={selectedField.strokeWidth || 2} onChange={e => updateSelected('strokeWidth', Number(e.target.value))} className="w-16 border rounded text-xs text-center" placeholder="ضخامت" /></div>}
+                        {selectedField.hasStroke && <div className="space-y-2 mb-2"><div className="flex gap-2"><input type="color" aria-label="رنگ حاشیه" value={selectedField.strokeColor || '#ffffff'} onChange={e => updateSelected('strokeColor', e.target.value)} className="h-6 w-8 p-0" /><input type="number" aria-label="ضخامت حاشیه" min="0.5" step="0.5" value={selectedField.strokeWidth || 2} onChange={e => updateSelected('strokeWidth', Number(e.target.value))} className="w-16 border rounded text-xs text-center" placeholder="ضخامت" /></div><div role="radiogroup" aria-label="موقعیت حاشیه" className="flex gap-1">{[['inside', 'داخل'], ['center', 'مرکز'], ['outside', 'بیرون']].map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={(selectedField.strokePos || 'center') === k} onClick={() => updateSelected('strokePos', k)} className={`flex-1 px-2 py-1 rounded-lg text-xs font-bold border ${(selectedField.strokePos || 'center') === k ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700'}`}>{l}</button>)}</div></div>}
                         <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer mb-2"><input type="checkbox" checked={selectedField.hasShadow || false} onChange={e => updateSelected('hasShadow', e.target.checked)} className="accent-indigo-600 rounded" /> افزودن سایه (Shadow)</label>
                         {selectedField.hasShadow && <div className="flex gap-2"><input type="color" value={selectedField.shadowColor || '#000000'} onChange={e => updateSelected('shadowColor', e.target.value)} className="h-6 w-8 p-0" /><input type="number" value={selectedField.shadowBlur || 4} onChange={e => updateSelected('shadowBlur', Number(e.target.value))} className="w-16 border rounded text-xs text-center" placeholder="محوی" /></div>}
                     </div>
@@ -1496,6 +1514,9 @@ function PropertiesSidebarPanel({ data, setData, selectedFieldId, onDelete, onSe
                             {!single && (<div className="flex gap-1 mb-2"><label className="bg-slate-100 hover:bg-slate-200 p-1 rounded cursor-pointer border flex-shrink-0" title="تغییر عکس کل پشت کارت"><Icon name="UploadCloud" className="w-3 h-3 text-slate-600" /><input type="file" accept="image/*" className="hidden" onChange={e => { uploadCondImage(ci, 'newBackBg', e.target.files[0]); e.target.value = ''; }} /></label><input type="text" placeholder="لینک تغییر بک‌گراند پشت کارت..." value={cond.newBackBg || ''} onChange={e => updateCond(ci, { newBackBg: e.target.value })} className="w-full border rounded text-xs p-1" dir="ltr" /></div>)}
 
                             <div className="border-t border-slate-100 pt-2 mt-2">
+                                <div className="text-[10px] font-bold text-indigo-700 mb-1">رنگ نوشته‌ها با این شرط</div>
+                                <div className="flex items-center gap-2 mb-1.5"><label className="flex items-center gap-1.5 text-[11px] text-slate-700 font-bold"><input type="checkbox" data-cond-all={ci} checked={!!cond.allTextColor} onChange={e => updateCond(ci, { allTextColor: e.target.checked ? (cond.allTextColor || '#ffffff') : '' })} className="accent-indigo-600" /> همه‌ی نوشته‌های تایپی</label>{cond.allTextColor && <input type="color" aria-label="رنگ همه‌ی نوشته‌ها" value={cond.allTextColor} onChange={e => updateCond(ci, { allTextColor: e.target.value })} className="h-6 w-8 p-0" />}</div>
+                                {(data.fields || []).filter(f => ['text', 'select', 'date'].includes(f.type) && f.printOnCard).length > 0 && <details className="mb-2"><summary className="text-[11px] text-slate-600 cursor-pointer select-none">رنگ جدا برای هر فیلد (اولویت با این است)</summary><div className="mt-1 space-y-1">{(data.fields || []).filter(f => ['text', 'select', 'date'].includes(f.type) && f.printOnCard).map(f => { const cur = (cond.fieldColors || {})[f.id]; return <div key={f.id} className="flex items-center gap-2 text-[11px]"><label className="flex items-center gap-1.5 flex-1 min-w-0"><input type="checkbox" checked={!!cur} onChange={e => { const fc = { ...(cond.fieldColors || {}) }; if (e.target.checked) fc[f.id] = f.color || '#ffffff'; else delete fc[f.id]; updateCond(ci, { fieldColors: fc }); }} className="accent-indigo-600" /><span className="truncate">{f.label}</span></label>{cur && <input type="color" aria-label={`رنگ ${f.label}`} value={cur} onChange={e => updateCond(ci, { fieldColors: { ...(cond.fieldColors || {}), [f.id]: e.target.value } })} className="h-5 w-7 p-0" />}</div>; })}</div></details>}
                                 <label className="flex items-center gap-2 text-[10px] font-bold text-indigo-700 mb-2 cursor-pointer"><input type="checkbox" checked={cond.hasOverlay || false} onChange={e => updateCond(ci, { hasOverlay: e.target.checked })} className="accent-indigo-600" /> افزودن لایه عکس (PNG Overlay) روی کارت</label>
                                 {cond.hasOverlay && (
                                     <div className="space-y-2 bg-indigo-50/50 p-2 rounded-lg border border-indigo-100">
@@ -2038,7 +2059,7 @@ function PlatformSettingsModal({ onClose }) {
     const themeProxy = (k) => ({ data: { theme: d[k] }, setData: (fn) => setD(p => ({ ...p, [k]: (typeof fn === 'function' ? fn({ theme: p[k] }) : fn).theme })) });
     const save = async () => {
         setSaving(true); setErrors({});
-        const payload = { name: d.name, logoUrl: d.logoUrl.trim(), logoUrlDark: (d.logoUrlDark || '').trim(), faviconUrl: d.faviconUrl.trim(), footer: d.footer, defaultTheme: d.defaultTheme, superTheme: d.superTheme, idleMinutes: Number(d.idleMinutes), loginMaxAttempts: Number(d.loginMaxAttempts), loginLockMinutes: Number(d.loginLockMinutes) };
+        const payload = { name: d.name, nameEn: (d.nameEn || '').trim(), logoUrl: d.logoUrl.trim(), logoUrlDark: (d.logoUrlDark || '').trim(), faviconUrl: d.faviconUrl.trim(), footer: d.footer, defaultTheme: d.defaultTheme, superTheme: d.superTheme, idleMinutes: Number(d.idleMinutes), loginMaxAttempts: Number(d.loginMaxAttempts), loginLockMinutes: Number(d.loginLockMinutes) };
         try {
             const r = await apiPost('save_platform_settings', payload); setPlatform(r.platform);
             if (hero && heroDirty) { await apiPost('save_hero', { people: hero }); setHeroDirty(false); }
@@ -2074,6 +2095,7 @@ function PlatformSettingsModal({ onClose }) {
 
                 {tab === 'identity' && <div className="space-y-5" role="tabpanel">
                     <div>{text('name', 'نام پلتفرم', { maxLength: 80 })}<p className="text-[11px] text-slate-500 mt-1">در عنوان تب مرورگر، صفحه ورود سوپرادمین و سربرگ پنل نمایش داده می‌شود.</p></div>
+                    <div>{text('nameEn', 'نام پلتفرم (انگلیسی)', { maxLength: 80, dir: 'ltr', placeholder: 'Asva Card Studio' })}<p className="text-[11px] text-slate-500 mt-1">در نسخهٔ انگلیسی صفحهٔ معرفی (/en) به‌جای نام فارسی نمایش داده می‌شود. اگر خالی بماند و نام فارسی باشد، یک نام انگلیسی عمومی استفاده می‌شود.</p></div>
                     <ImageSettingField id="ps-logo" label="لوگوی پلتفرم" hint="در سربرگ پنل سوپرادمین و صفحه ورود، و برای سازمان‌هایی که لوگوی خودشان را ندارند. تصویر مربع با پس‌زمینه شفاف (PNG) بهترین نتیجه را دارد." value={d.logoUrl} onChange={v => set('logoUrl', v)} error={errors.logoUrl} />
                     <ImageSettingField id="ps-logo-dark" dark label="لوگوی حالت تیره (اختیاری)" hint="وقتی کاربر حالت نمایش را «تیره» کند، این لوگو جای لوگوی بالا را می‌گیرد؛ مثلاً نسخه‌ی سفید یا روشن لوگو. اگر خالی بماند، در حالت تیره هم همان لوگوی بالا نشان داده می‌شود." value={d.logoUrlDark || ''} onChange={v => set('logoUrlDark', v)} error={errors.logoUrlDark} fallback={d.logoUrl.trim()} clearLabel="حذف (استفاده از لوگوی عادی)" />
                     <ImageSettingField id="ps-favicon" label="آیکون تب مرورگر (favicon)" hint="تصویر مربع ساده، ترجیحاً PNG حداقل ۶۴×۶۴. اگر خالی بماند، لوگوی پیش‌فرض سامانه استفاده می‌شود." value={d.faviconUrl} onChange={v => set('faviconUrl', v)} error={errors.faviconUrl} maxSize={256} previewClass="w-14 h-14" />
@@ -2523,6 +2545,22 @@ function CommitNumberInput({ value, onCommit, ...rest }) {
 }
 
 // قالب خروجی: کارت دورو یا خروجی تک‌رو (پوستر خوش‌آمدگویی، کارت تک‌رو، گواهی و ...) و ابعاد بوم
+/** قالب نام فایل خروجی: با کلیک روی فیلدها ساخته می‌شود (مثلاً «{جنسیت} {نام}» ← «آقا_محمد_رضایی.jpg»). */
+function FileNameEditor({ data, setData }) {
+    const tpl = data.fileNameTpl || ''; const set = (v) => setData(p => ({ ...p, fileNameTpl: v }));
+    const srcs = (data.fields || []).filter(f => !isComposite(f) && !['photo', 'barcode', 'qrcode', 'stars'].includes(f.type) && f.label);
+    const add = (tok) => set(`${tpl}${tpl && !/\s$/.test(tpl) ? ' ' : ''}${tok}`);
+    const sample = composeText({ id: '_fn', composeTpl: tpl }, {}, data, false);
+    return (
+        <div className="space-y-2 bg-slate-50 border rounded-xl p-3">
+            <label htmlFor="fn-tpl" className="text-sm font-bold block">نام فایل خروجی</label>
+            <p className="text-[11px] text-slate-500">اسم فایل‌هایی که کاربر و مدیر دانلود می‌کنند (تصویر، PDF، ZIP گروهی و پوستر). خالی بماند، نام «Card» است. «روی کارت/پشت کارت» خودکار به آخر نام اضافه می‌شود.</p>
+            <input id="fn-tpl" dir="auto" maxLength={120} value={tpl} onChange={e => set(e.target.value)} placeholder="مثلاً {جنسیت} {نام}" className="w-full border rounded-lg px-3 py-2 text-sm bg-white" />
+            <div className="flex flex-wrap gap-1">{[...srcs.map(f => [f.id, f.label]), ['org', 'نام سازمان'], ['date', 'تاریخ صدور']].map(([id, label]) => <button key={id} type="button" data-fn-var={id} onClick={() => add(`{${id}}`)} className="px-2 py-0.5 rounded-full text-[11px] font-bold border bg-white text-indigo-800 border-indigo-200 hover:bg-indigo-50">{label}</button>)}{tpl && <button type="button" onClick={() => set('')} className="px-2 py-0.5 rounded-full text-[11px] border bg-white text-slate-500">پاک کردن</button>}</div>
+            {tpl && <p className="text-[11px] text-slate-600">نمونه (با نام فیلدها): <b dir="auto">{safeFileName(sample.replace(/\s*\n\s*/g, ' '))}.jpg</b></p>}
+        </div>
+    );
+}
 function OutputFormatEditor({ data, setData, dims }) {
     const single = isSingleSided(data); const dim = getCanvasDefault(data); const fixed = isFixedCanvas(data);
     const presetKey = (CANVAS_PRESETS.find(p => p.w === dim.w && p.h === dim.h) || { key: 'custom' }).key;
@@ -2772,7 +2810,7 @@ function SuperAdminWizard({ initialData, globalFonts, globalValidations, t, dict
                                         <div className="grid lg:grid-cols-2 gap-4 items-start">
                                             <SettingsSection title="هویت سازمان" icon="Building2" hint="نام، زبان و آدرس"><div><label className="text-sm font-bold mb-1 block">نام سازمان</label><input className="w-full border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={data.orgName} onChange={e => setData(p => ({ ...p, orgName: e.target.value }))} /></div><div><label className="text-sm font-bold mb-1 block">زبان پلتفرم</label><select value={data.langCode} onChange={e => setData(p => ({ ...p, langCode: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 outline-none bg-slate-50"><option value="fa">فارسی (Persian)</option><option value="en">English (انگلیسی)</option><option value="ar">العربية (عربی)</option><option value="tr">Türkçe (ترکی)</option></select></div><div id="fieldwrap-slug"><SlugEditor data={data} setData={setData} originalSlug={initialData && initialData.id ? initialData.slug : ''} /></div></SettingsSection>
                                             <SettingsSection title="رمزهای ورود" icon="Lock" hint="مدیر و کاربران"><div><label className="text-sm font-bold mb-1 block">{t('admin_pass')}</label><input type="password" autoComplete="new-password" placeholder={passPlaceholder('hasAdminPass')} className="w-full border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={data.adminPass} onChange={e => setData(p => ({ ...p, adminPass: e.target.value }))} /></div><div><label className="text-sm font-bold mb-1 block">{t('public_pass')}</label><input type="password" autoComplete="new-password" placeholder={passPlaceholder('hasPublicPass')} className="w-full border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={data.publicPass} onChange={e => setData(p => ({ ...p, publicPass: e.target.value }))} /></div></SettingsSection>
-                                            <SettingsSection title="قالب خروجی و ابعاد" icon="IdCard"><OutputFormatEditor data={data} setData={setData} dims={sideDims} /></SettingsSection>
+                                            <SettingsSection title="قالب خروجی و ابعاد" icon="IdCard"><OutputFormatEditor data={data} setData={setData} dims={sideDims} /><FileNameEditor data={data} setData={setData} /></SettingsSection>
                                             <SettingsSection title="تنظیمات سازمان" icon="Settings"><TenantSettingsEditor data={data} setData={setData} /></SettingsSection>
                                         </div>
                                         <SettingsSection title="اتصالات (وب‌هوک)" icon="Plug" defaultOpen={false} hint="ارسال خودکار اطلاعات کارت به سامانه‌های دیگر"><WebhookEditor webhooks={data.webhooks} onChange={(webhooks) => setData(p => ({ ...p, webhooks }))} tenantId={data.id} sampleData={previewFormData} /></SettingsSection>
@@ -3000,6 +3038,8 @@ const renderCardCanvases = async (tenant, cardData) => {
 };
 const canvasBlob = (c, type = 'image/jpeg') => new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('blob')), type, 0.92));
 const safeFileName = (s) => String(s || '').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 60) || 'card';
+/** نام پایه‌ی فایل خروجی کارت از «قالب نام فایل» سازمان (مثلاً «{جنسیت} {نام}»)؛ بدون قالب: Card. */
+const cardFileBase = (config, userData) => { const tpl = String((config && config.fileNameTpl) || '').trim(); if (!tpl) return 'Card'; const out = composeText({ id: '_fn', composeTpl: tpl }, userData || {}, config, true).replace(/\s*\n\s*/g, ' '); return out ? safeFileName(out) : 'Card'; };
 
 function TenantDashboard({ tenant, t, lang, langControl, globalValidations, onLogout }) {
     const [cards, setCards] = useState([]); const [loading, setLoading] = useState(true); const [searchTerm, setSearchTerm] = useState(''); const [showSettings, setShowSettings] = useState(false); const [passwords, setPasswords] = useState({ adminPass: '', publicPass: '' }); const [settingsError, setSettingsError] = useState(''); const [previewCard, setPreviewCard] = useState(null); const [editingCard, setEditingCard] = useState(null);
@@ -3066,7 +3106,7 @@ function TenantDashboard({ tenant, t, lang, langControl, globalValidations, onLo
             for (let i = 0; i < list.length; i++) {
                 const full = await apiGet('get_card_full', { id: list[i].id });
                 const canvases = await renderCardCanvases(tenant, full.cardData || {});
-                const base = `${String(i + 1).padStart(3, '0')}_${safeFileName(ownerOf(full) || full.requesterName)}`;
+                const base = `${String(i + 1).padStart(3, '0')}_${(tenant.fileNameTpl || '').trim() ? cardFileBase(tenant, full.cardData || {}) : safeFileName(ownerOf(full) || full.requesterName)}`;
                 if (zip) { for (let k = 0; k < canvases.length; k++) zip.file(`${base}${canvases.length > 1 ? (k === 0 ? '_front' : '_back') : ''}.jpg`, await canvasBlob(canvases[k])); }
                 else pdfCanvases.push(...canvases);
                 setBulk({ kind, done: i + 1, total: list.length });
