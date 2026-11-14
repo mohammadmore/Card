@@ -24,10 +24,10 @@ export function SalesCenter({ kit, onClose, onBuildTenant, onOpenTenant }) {
                     <a href="./" target="_blank" rel="noopener" className="text-sm font-bold text-indigo-700 bg-indigo-50 px-3 py-2 rounded-xl flex items-center gap-1.5"><Icon name="ExternalLink" className="w-4 h-4" /> مشاهده‌ی صفحه</a>
                     <button onClick={onClose} aria-label="بستن" className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full"><Icon name="X" className="w-4 h-4" /></button>
                 </div>
-                <div role="tablist" aria-label="بخش‌های فروش" className="flex gap-1 px-4 pt-3 overflow-x-auto shrink-0">
+                <div role="tablist" aria-label="بخش‌های فروش" data-slide="solid" className="flex gap-1 px-4 pt-3 overflow-x-auto shrink-0">
                     {tabs.map(([k, ic, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold shrink-0 ${tab === k ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}><Icon name={ic} className="w-4 h-4" /> {l}</button>)}
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 sm:p-6" role="tabpanel">
+                <div className="mo-kids flex-1 overflow-y-auto p-4 sm:p-6" role="tabpanel">
                     {tab === 'orders' && <OrdersTab kit={kit} onBuildTenant={onBuildTenant} onOpenTenant={onOpenTenant} />}
                     {tab === 'leads' && <LeadsTab kit={kit} />}
                     {tab === 'landing' && <LandingTab kit={kit} />}
@@ -54,7 +54,7 @@ function OrdersTab({ kit, onBuildTenant, onOpenTenant }) {
     if (open) return <OrderDetail kit={kit} order={open} onBack={() => setOpenId(null)} onChanged={load} onBuildTenant={onBuildTenant} onOpenTenant={onOpenTenant} />;
     return (
         <div className="space-y-4">
-            <div className="flex flex-wrap gap-2 items-center">
+            <div data-slide="solid" className="flex flex-wrap gap-2 items-center">
                 {[['active', 'نیازمند اقدام'], ['pending_payment', 'در انتظار پرداخت'], ['delivered', 'تحویل‌شده'], ['cancelled', 'لغو‌شده'], ['all', 'همه']].map(([k, l]) => <button key={k} onClick={() => { touched.current = true; setFilter(k); }} aria-pressed={filter === k} className={`px-3 py-1.5 rounded-full text-sm font-bold border ${filter === k ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white/70 text-slate-600'}`}>{l} <span className="opacity-70">{fa(counts[k] || 0)}</span></button>)}
                 <input value={q} onChange={e => setQ(e.target.value)} placeholder="جستجو: کد، موبایل، نام…" aria-label="جستجوی سفارش" className={`${inp} max-w-xs ms-auto`} />
             </div>
@@ -218,7 +218,7 @@ function LandingTab({ kit }) {
     return (
         <div className="space-y-4">
             <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 px-4 sm:px-6 py-3 bg-white/80 backdrop-blur border-b flex flex-wrap gap-2 items-center">
-                <div role="tablist" aria-label="زبان محتوا" className="flex gap-1 bg-slate-100 rounded-xl p-1">{[['fa', 'فارسی'], ['en', 'English']].map(([k, l]) => <button key={k} role="tab" aria-selected={lang === k} onClick={() => setLang(k)} className={`px-3 py-1.5 rounded-lg text-sm font-bold ${lang === k ? 'bg-white shadow text-indigo-700' : 'text-slate-600'}`}>{l}</button>)}</div>
+                <div role="tablist" aria-label="زبان محتوا" data-slide="soft" className="flex gap-1 bg-slate-100 rounded-xl p-1">{[['fa', 'فارسی'], ['en', 'English']].map(([k, l]) => <button key={k} role="tab" aria-selected={lang === k} onClick={() => setLang(k)} className={`px-3 py-1.5 rounded-lg text-sm font-bold ${lang === k ? 'bg-white shadow text-indigo-700' : 'text-slate-600'}`}>{l}</button>)}</div>
                 <span className="text-xs text-slate-500">متن‌های هر زبان جداست؛ تنظیمات مشترک (تماس، اینماد، نمایش بخش‌ها) پایین صفحه است.</span>
                 <details className="relative"><summary className="cursor-pointer text-xs font-bold text-indigo-700 select-none px-2 py-1.5 rounded-lg bg-indigo-50">متن پیش‌فرض جدید ▾</summary><div className="absolute z-20 mt-1 p-2 glass-strong rounded-xl shadow-xl flex flex-col gap-1 min-w-[200px]">{[[['features', 'featuresTitle', 'featuresSubtitle'], 'امکانات'], [['steps', 'stepsTitle'], 'مراحل کار'], [['faq', 'faqTitle'], 'سؤالات متداول']].map(([ks, nm]) => <button key={nm} type="button" onClick={() => resetSection(ks, nm)} className="text-start text-sm font-bold px-3 py-1.5 rounded-lg hover:bg-indigo-50">بازگرداندن «{nm}»</button>)}</div></details>
                 <button onClick={save} disabled={saving || !dirty} className="ms-auto btn-grad px-5 py-2 rounded-xl font-bold">{saving ? 'در حال ذخیره…' : dirty ? 'ذخیره‌ی تغییرات' : 'ذخیره شد'}</button>

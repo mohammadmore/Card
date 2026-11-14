@@ -313,3 +313,39 @@ html:not(.dark) .text-slate-500 { color: #475569; }
 @media (pointer: coarse) {
   button.p-2, button.p-2\.5, button.px-2\.5.py-1\.5, button.px-2.py-1\.5 { min-height: 40px; min-width: 40px; }
 }
+
+
+/* ============ حرکت: هیچ تغییری یهویی نیست ============ */
+@keyframes mo-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mo-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes mo-pop-in { from { opacity: 0; transform: translateY(10px) scale(.975); } to { opacity: 1; transform: none; } }
+@keyframes mo-slide-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* ورود پنجره‌های مدال و پاپ‌آپ‌ها */
+.fixed.inset-0:not(.liquid-bg) { animation: mo-fade-in .2s ease-out; }
+[role="dialog"], [role="alertdialog"] { animation: mo-pop-in .24s cubic-bezier(.2, .8, .3, 1); }
+[role="menu"], [role="listbox"] { animation: mo-pop-in .16s ease-out; transform-origin: top; }
+.mo-ghost, .mo-ghost.fixed { animation: mo-fade-out .2s ease-in forwards !important; pointer-events: none !important; }
+.mo-ghost [role="dialog"], .mo-ghost [role="alertdialog"] { animation: none !important; }
+/* تعویض محتوای صفحه/تب/مرحله: عنصر تازه با فید و کمی لغزش بالا می‌آید */
+.mo-kids > * { animation: mo-slide-in .26s ease-out; }
+details[open] > :not(summary) { animation: mo-slide-in .22s ease-out; }
+/* تغییر رنگ/زمینه‌ی دکمه‌ها و کنترل‌ها نرم باشد (کلاس‌های ترنزیشن خود عناصر اولویت دارند) */
+button, a, summary, label, select, input, textarea { transition: color .2s ease, background-color .2s ease, border-color .2s ease, box-shadow .2s ease, opacity .2s ease; }
+/* هایلایت لیزنده‌ی تب‌ها و مراحل */
+[data-slide] { position: relative; --hl-x: 0px; --hl-y: 0px; --hl-w: 0px; --hl-h: 0px; --hl-o: 0; --hl-d: 0ms; --hl-r: 12px; }
+[data-slide]::before { content: ''; position: absolute; left: 0; top: 0; width: var(--hl-w); height: var(--hl-h); border-radius: var(--hl-r); transform: translate(var(--hl-x), var(--hl-y)); opacity: var(--hl-o); pointer-events: none; z-index: 0;
+  transition: transform var(--hl-d) cubic-bezier(.4, 0, .2, 1), width var(--hl-d) cubic-bezier(.4, 0, .2, 1), height var(--hl-d) cubic-bezier(.4, 0, .2, 1), opacity .2s ease; }
+[data-slide="solid"]::before { background: #4f46e5; box-shadow: 0 2px 8px rgba(79, 70, 229, .35); }
+[data-slide="soft"]::before { background: #fff; box-shadow: 0 1px 4px rgba(15, 23, 42, .18); }
+html.dark [data-slide="soft"]::before { background: #334155; box-shadow: 0 1px 3px rgba(0, 0, 0, .45); }
+[data-slide] > * { position: relative; z-index: 1; }
+/* آیتم فعال: خودش زمینه ندارد (هایلایت پشتش است) و رنگ متنش بعد از رسیدن هایلایت عوض می‌شود */
+[data-slide] :is([aria-selected="true"], [aria-current="step"], [aria-pressed="true"], [aria-checked="true"]) { background: transparent !important; border-color: transparent !important; box-shadow: none !important; transition: color .2s ease calc(var(--hl-d) * .5); }
+[data-slide="solid"] :is([aria-selected="true"], [aria-current="step"], [aria-pressed="true"], [aria-checked="true"]) { color: #fff !important; }
+html:not(.dark) [data-slide="soft"] :is([aria-selected="true"], [aria-checked="true"]) { color: #4338ca !important; }
+html.dark [data-slide="soft"] :is([aria-selected="true"], [aria-checked="true"]) { color: #c7d2fe !important; }
+@media (prefers-reduced-motion: reduce) {
+  .fixed.inset-0, [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], .mo-kids > *, details[open] > :not(summary) { animation: none !important; }
+  [data-slide]::before { transition: none !important; }
+  button, a, summary, label, select, input, textarea { transition: none; }
+}
