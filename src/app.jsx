@@ -1980,7 +1980,9 @@ function FilterDate({ value, onChange, label, lang }) {
 /** ویرایشگر ظاهر نوشته برای شرط گرافیکی: سه گروه مستقل (رنگ/گرادیانت، حاشیه، سایه)؛ هر گروه فقط وقتی «تغییر» خورده باشد اعمال می‌شود. */
 function CondStyleEditor({ value = {}, onChange, base = {}, idp = 'cs' }) {
     const has = (g) => COND_STYLE_KEYS[g].some(k => value[k] !== undefined);
-    const toggle = (g, on, seed) => { const n = { ...value }; COND_STYLE_KEYS[g].forEach(k => delete n[k]); onChange(on ? { ...n, ...seed } : n); };
+    // با برداشتن تیک یک گروه، مقدارهای آن به‌خاطر سپرده می‌شود تا با تیک دوباره (یا تیک ناخواسته) از نو تنظیم نشوند
+    const stash = useRef({});
+    const toggle = (g, on, seed) => { const n = { ...value }; if (!on) { const keep = {}; COND_STYLE_KEYS[g].forEach(k => { if (value[k] !== undefined) keep[k] = value[k]; }); if (Object.keys(keep).length) stash.current[g] = keep; } COND_STYLE_KEYS[g].forEach(k => delete n[k]); onChange(on ? { ...n, ...seed, ...(stash.current[g] || {}) } : n); };
     const set = (patch) => onChange({ ...value, ...patch });
     const ck = 'accent-indigo-600'; const col = 'h-6 w-8 p-0'; const num = 'w-14 border rounded text-[11px] text-center py-0.5';
     return (
