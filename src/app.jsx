@@ -118,34 +118,48 @@ const cssUrl = (u) => u ? `url("${String(u).replace(/["\\\n\r]/g, '')}")` : 'non
 // فهرست فونت‌های کتابخانه مرکزی؛ با fetchGlobalFonts پر می‌شود و رندر کارت از آن برای لود فونت استفاده می‌کند.
 let globalFontRegistry = [];
 const fontLoadCache = {};
-const loadFontFace = (name, url) => {
+// وزن فونت: عدد ۱۰۰ تا ۹۰۰؛ مقدارهای قدیمی «normal» و «bold» (و نبودن مقدار = ضخیم) هم پشتیبانی می‌شود
+const FONT_WEIGHTS = [[100, 'نازک'], [200, 'خیلی سبک'], [300, 'سبک'], [400, 'معمولی'], [500, 'متوسط'], [600, 'نیمه‌ضخیم'], [700, 'ضخیم'], [800, 'خیلی ضخیم'], [900, 'سیاه']];
+const normWeight = (w) => { if (w === 'normal') return 400; if (w === 'bold' || w == null || w === '') return 700; const n = parseInt(w, 10); return n >= 100 && n <= 900 ? Math.round(n / 100) * 100 : 700; };
+/** وزن‌های موجود یک خانواده‌ی فونت: کتابخانه‌ی مرکزی (هر فایل یک وزن)، Vazirmatn (متغیر: همه)، یا فونت سیستم (معمولی/ضخیم). */
+const familyWeights = (family) => {
+    const reg = [...new Set(globalFontRegistry.filter(f => f.font_name === family).map(f => Number(f.font_weight) || 400))].sort((a, b) => a - b);
+    if (reg.length > 1) return reg;
+    if (family === 'Vazirmatn') return [100, 200, 300, 400, 500, 600, 700, 800, 900];
+    return [400, 700];
+};
+const nearestWeight = (w, list) => list.reduce((best, x) => (Math.abs(x - w) < Math.abs(best - w) ? x : best), list[0]);
+const loadFontFace = (name, url, weight = 400) => {
     if (!name || !url) return Promise.resolve(false);
-    if (!fontLoadCache[name]) {
-        fontLoadCache[name] = new FontFace(name, cssUrl(url)).load()
+    const key = `${name}|${weight}`;
+    if (!fontLoadCache[key]) {
+        fontLoadCache[key] = new FontFace(name, cssUrl(url), { weight: String(weight) }).load()
             .then(face => { document.fonts.add(face); return true; })
-            .catch(() => { delete fontLoadCache[name]; return false; });
+            .catch(() => { delete fontLoadCache[key]; return false; });
     }
-    return fontLoadCache[name];
+    return fontLoadCache[key];
 };
 // فونت‌های کتابخانه فقط معرفی می‌شوند و تا وقتی متنی با آن‌ها نمایش داده نشود دانلود نمی‌شوند
 // (پیش‌تر همه‌ی فایل‌های فونت هنگام باز شدن صفحه دانلود می‌شد). رسم کارت با ensureFonts فونت لازم را کامل بارگذاری می‌کند.
 const registeredFonts = new Set();
-const registerFontFace = (name, url) => {
-    if (!name || !url || registeredFonts.has(name) || fontLoadCache[name]) return;
-    try { document.fonts.add(new FontFace(name, cssUrl(url))); registeredFonts.add(name); } catch (e) { }
+const registerFontFace = (name, url, weight = 400) => {
+    const key = `${name}|${weight}`;
+    if (!name || !url || registeredFonts.has(key) || fontLoadCache[key]) return;
+    try { document.fonts.add(new FontFace(name, cssUrl(url), { weight: String(weight) })); registeredFonts.add(key); } catch (e) { }
 };
-const injectGlobalFonts = (fonts) => (fonts || []).forEach(f => registerFontFace(f.font_name, f.font_url));
+const injectGlobalFonts = (fonts) => (fonts || []).forEach(f => registerFontFace(f.font_name, f.font_url, Number(f.font_weight) || 400));
 const collectFontFamilies = (config) => [...new Set((config.fields || []).filter(f => f.printOnCard && ['text', 'select', 'date', 'photo'].includes(f.type)).map(f => f.fontFamily || 'Vazirmatn'))];
 /** مطمئن می‌شود همه‌ی فونت‌های مورد نیاز کارت واقعاً لود شده‌اند (با چند بار تلاش). خروجی: موفق بودن همه. */
 const ensureFonts = async (families, legacyCustomFonts = [], retries = 3) => {
     let allOk = true;
     for (const fam of families) {
         if (DEFAULT_FONTS.includes(fam) && fam !== 'Vazirmatn') continue;
-        const src = globalFontRegistry.find(f => f.font_name === fam) || (legacyCustomFonts || []).map(f => ({ font_name: f.name, font_url: f.url })).find(f => f.font_name === fam);
+        const srcs = globalFontRegistry.filter(f => f.font_name === fam).map(f => ({ ...f, w: Number(f.font_weight) || 400 }));
+        if (!srcs.length) (legacyCustomFonts || []).filter(f => f.name === fam).forEach(f => srcs.push({ font_name: f.name, font_url: f.url, w: 400 }));
         let ok = false;
         for (let i = 0; i < retries && !ok; i++) {
             try {
-                if (src) await loadFontFace(src.font_name, src.font_url);
+                for (const src of srcs) await loadFontFace(src.font_name, src.font_url, src.w); // همه‌ی وزن‌های این خانواده
                 const faces = await document.fonts.load(`bold 40px "${fam}"`);
                 ok = faces.length > 0;
             } catch (e) { ok = false; }
@@ -461,7 +475,13 @@ const starPositions = (f) => {
         const n = clampInt(f.starCount, 0, STAR_MAX); const size = Number(f.starSize) || 20;
         const cols = layout === 'line' ? Math.max(1, n) : clampInt(f.starCols, 1, STAR_MAX) || 1; const rowsN = Math.max(1, Math.ceil(n / cols));
         const cellW = f.w / cols; const cellH = f.h / rowsN;
-        for (let i = 0; i < n; i++) { const row = Math.floor(i / cols); const col = i % cols; const p = rev ? col : cols - 1 - col; out.push({ x: f.x + cellW * (p + 0.5), y: f.y + cellH * (row + 0.5), size, angle: 0 }); }
+        // ردیف آخر ناقص: با گزینه‌ی «وسط‌چین» نسبت به ردیف‌های کامل در وسط قرار می‌گیرد (چه ترتیب راست‌چین باشد چه چپ‌چین)
+        const lastN = n - (rowsN - 1) * cols; const centerLast = layout === 'grid' && f.starLastRow === 'center' && lastN < cols && lastN > 0; const off = (cols - lastN) / 2;
+        for (let i = 0; i < n; i++) {
+            const row = Math.floor(i / cols); const col = i % cols; let p = rev ? col : cols - 1 - col;
+            if (centerLast && row === rowsN - 1) p = (rev ? col : lastN - 1 - col) + off;
+            out.push({ x: f.x + cellW * (p + 0.5), y: f.y + cellH * (row + 0.5), size, angle: 0 });
+        }
     }
     return out;
 };
@@ -587,7 +607,7 @@ const renderCardSide = async ({ config, userData, side, bgUrl, baseBgUrl, showAc
             ctx.save(); let isRTLField = true; if (field.type === 'date') { if (field.printCalendar === 'gregorian' && !(field.dateFormat || '').startsWith('FA_')) isRTLField = false; } else { if (isEnTextType(field)) isRTLField = false; }
             ctx.direction = isRTLField ? 'rtl' : 'ltr';
             const mark = (str) => (isRTLField ? '\u202B' : '\u202A') + str + '\u202C';
-            const fam = field.fontFamily || 'Vazirmatn'; const weight = field.fontWeight === 'normal' ? 'normal' : 'bold';
+            const fam = field.fontFamily || 'Vazirmatn'; const weight = normWeight(field.fontWeight);
             const setFont = (fs) => { ctx.font = `${weight} ${fs}px '${fam}', sans-serif`; };
             if ('letterSpacing' in ctx) ctx.letterSpacing = `${Number(field.letterSpacing) || 0}px`;
             ctx.textAlign = field.align || 'right'; ctx.textBaseline = 'middle';
@@ -1080,6 +1100,7 @@ function StarsProperties({ field, update, data }) {
             ) : (
                 <div className="space-y-2">
                     <div className={`grid gap-1 ${layout === 'grid' ? 'grid-cols-3' : 'grid-cols-2'}`}>{num('تعداد کل', f.starCount, v => set({ starCount: clampInt(v, 0, STAR_MAX) }))}{layout === 'grid' && num('ستون‌ها', f.starCols, v => set({ starCols: clampInt(v, 1, STAR_MAX) }))}{num('اندازه ستاره', f.starSize, v => set({ starSize: Math.max(1, Number(v) || 0) }))}</div>
+                    {layout === 'grid' && <div><label className="text-[11px] text-slate-600 block mb-1" htmlFor="star-lastrow">چینش ردیف آخر (وقتی کامل نیست)</label><select id="star-lastrow" value={f.starLastRow === 'center' ? 'center' : 'start'} onChange={e => set({ starLastRow: e.target.value })} className="w-full border rounded-lg px-2 py-2 text-sm bg-white"><option value="start">مثل ترتیب پر شدن (راست‌چین یا چپ‌چین)</option><option value="center">وسط‌چین نسبت به ردیف‌های قبلی</option></select></div>}
                     <button onClick={() => set({}, true)} className="w-full text-[11px] bg-white border border-amber-300 text-amber-800 py-1.5 rounded-lg font-bold hover:bg-amber-50">تنظیم خودکار اندازه‌ی کادر</button>
                     <p className="text-[10px] text-slate-500">ستاره‌ها به‌طور مساوی داخل کادر پخش می‌شوند؛ با تغییر عرض/ارتفاع کادر فاصله‌ها تنظیم می‌شود.</p>
                 </div>
@@ -1479,7 +1500,7 @@ function PropertiesSidebarPanel({ data, setData, selectedFieldId, onDelete, onSe
                     <div className="flex gap-4"><div className="flex-1"><label className="text-[10px] text-slate-500 block mb-1">نوع رنگ‌بندی</label><select className="w-full border rounded px-2 py-1 text-sm bg-white" value={selectedField.fillType || 'solid'} onChange={e => updateSelected('fillType', e.target.value)}><option value="solid">تک‌رنگ</option><option value="linear">گرادیانت خطی</option></select></div><div className="flex-1"><label className="text-[10px] text-slate-500 block mb-1">چیدمان</label><select className="w-full border rounded px-2 py-1 text-sm bg-white" value={selectedField.align || 'right'} onChange={e => updateSelected('align', e.target.value)}><option value="right">راست‌چین</option><option value="center">وسط‌چین</option><option value="left">چپ‌چین</option></select></div></div>
                     <div className="grid grid-cols-2 gap-2">
                         <div><label className="text-[10px] text-slate-500 block mb-1">تراز عمودی</label><select className="w-full border rounded px-2 py-1 text-sm bg-white" value={selectedField.vAlign || 'middle'} onChange={e => updateSelected('vAlign', e.target.value)}><option value="top">بالا</option><option value="middle">وسط</option><option value="bottom">پایین</option></select></div>
-                        <div><label className="text-[10px] text-slate-500 block mb-1">ضخامت فونت</label><select className="w-full border rounded px-2 py-1 text-sm bg-white" value={selectedField.fontWeight === 'normal' ? 'normal' : 'bold'} onChange={e => updateSelected('fontWeight', e.target.value)}><option value="bold">ضخیم</option><option value="normal">معمولی</option></select></div>
+                        <div><label className="text-[10px] text-slate-500 block mb-1">وزن فونت</label><FontWeightSelect family={selectedField.fontFamily || 'Vazirmatn'} value={selectedField.fontWeight} onChange={v => updateSelected('fontWeight', v)} className="w-full border rounded px-2 py-1 text-sm bg-white" /></div>
                         <div><label className="text-[10px] text-slate-500 block mb-1">فاصله‌ی حروف (px)</label><input type="number" step="0.5" className="w-full border rounded px-2 py-1 text-sm bg-white text-center" value={selectedField.letterSpacing || 0} onChange={e => updateSelected('letterSpacing', Number(e.target.value))} dir="ltr" /></div>
                         {selectedField.type !== 'date' && <div className="flex items-end"><label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer pb-1"><input type="checkbox" checked={!!selectedField.multiline} onChange={e => updateSelected('multiline', e.target.checked)} className="accent-indigo-600" /> چندخطی (شکستن خودکار)</label></div>}
                         {selectedField.multiline && selectedField.type !== 'date' && <div><label className="text-[10px] text-slate-500 block mb-1">فاصله‌ی خطوط</label><input type="number" step="0.1" min="0.8" max="3" className="w-full border rounded px-2 py-1 text-sm bg-white text-center" value={selectedField.lineHeight || 1.3} onChange={e => updateSelected('lineHeight', Number(e.target.value))} dir="ltr" /></div>}
@@ -1822,19 +1843,67 @@ function PresetsManagerModal({ onClose }) {
     );
 }
 
-function FontsManagerModal({ onClose, fetchGlobalFonts }) {
-    const [fonts, setFonts] = useState([]); const [loading, setLoading] = useState(true); const [editing, setEditing] = useState(null); const [uploadingFile, setUploadingFile] = useState(false);
-    const fetchList = () => { setLoading(true); apiGet('get_fonts').then(d => setFonts(Array.isArray(d) ? d : [])).catch(e => notifyError(e)).finally(() => setLoading(false)); };
+/** انتخاب وزن فونت برای یک خانواده: فقط وزن‌هایی که واقعاً موجودند (کتابخانه‌ی مرکزی، Vazirmatn یا معمولی/ضخیم). */
+function FontWeightSelect({ family, value, onChange, className = '', label = 'وزن فونت' }) {
+    const list = familyWeights(family || 'Vazirmatn'); const cur = nearestWeight(normWeight(value), list);
+    return <select aria-label={label} className={className} value={String(cur)} onChange={e => onChange(e.target.value)}>{list.map(w => <option key={w} value={w}>{(FONT_WEIGHTS.find(x => x[0] === w) || [0, ''])[1]} ({w})</option>)}</select>;
+}
+const newFontFamily = () => ({ name: '', rows: [{ id: null, key: '', weight: 400, url: '' }], removed: [] });
+/** مدیریت کتابخانه‌ی فونت: هر «خانواده» چند فایل با وزن‌های مختلف دارد (مثلاً معمولی ۴۰۰ و ضخیم ۷۰۰). startNew: مستقیم فرم خانواده‌ی جدید (از مرحله‌ی مدیریت فونت ویزارد). */
+function FontsManagerModal({ onClose, fetchGlobalFonts, startNew = false }) {
+    const [fonts, setFonts] = useState([]); const [loading, setLoading] = useState(true); const [editing, setEditing] = useState(startNew ? newFontFamily() : null); const [busy, setBusy] = useState(false); const [upIdx, setUpIdx] = useState(-1);
+    const fetchList = () => { setLoading(true); return apiGet('get_fonts').then(d => setFonts(Array.isArray(d) ? d : [])).catch(e => notifyError(e)).finally(() => setLoading(false)); };
     useEffect(() => { fetchList(); }, []);
-    const handleDelete = async (id) => { if (!(await askConfirm('این مورد حذف شود؟', { danger: true, okText: 'حذف' }))) return; try { await apiPost('delete_font', { id }); fetchList(); fetchGlobalFonts(); } catch (e) { notifyError(e); } };
-    const handleSave = async () => { if (!editing.font_key || !editing.font_name || !editing.font_url) return notify('همه‌ی موارد الزامی است'); try { await apiPost('save_font', editing); setEditing(null); fetchList(); fetchGlobalFonts(); } catch (e) { notifyError(e); } };
-    const handleFileUpload = async (e) => { const file = e.target.files[0]; e.target.value = ''; if (!file) return; if (file.size > 10 * 1024 * 1024) return notify('حجم فایل نباید بیشتر از 10 مگابایت باشد'); setUploadingFile(true); try { const r = await apiPost('upload_font', { file: await readFileAsDataURL(file) }); setEditing(ed => ({ ...ed, font_url: r.url })); } catch (err) { notifyError(err, 'خطا در آپلود'); } setUploadingFile(false); };
+    const families = useMemo(() => { const m = new Map(); fonts.forEach(f => { if (!m.has(f.font_name)) m.set(f.font_name, []); m.get(f.font_name).push(f); }); return [...m.entries()].map(([name, rows]) => ({ name, rows: rows.sort((x, y) => x.font_weight - y.font_weight) })); }, [fonts]);
+    const deleteFamily = async (fam) => { if (!(await askConfirm(`خانواده‌ی «${fam.name}» با همه‌ی وزن‌هایش (${fam.rows.length} فایل) حذف شود؟`, { danger: true, okText: 'حذف' }))) return; try { for (const r of fam.rows) await apiPost('delete_font', { id: r.id }); await fetchList(); fetchGlobalFonts(); } catch (e) { notifyError(e); } };
+    const startEdit = (fam) => setEditing({ name: fam.name, rows: fam.rows.map(r => ({ id: r.id, key: r.font_key, weight: r.font_weight, url: r.font_url })), removed: [] });
+    const setRow = (i, patch) => setEditing(ed => ({ ...ed, rows: ed.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) }));
+    const addRow = () => setEditing(ed => { const used = new Set(ed.rows.map(r => r.weight)); const w = [400, 700, 300, 500, 600, 800, 900, 200, 100].find(x => !used.has(x)); return w ? { ...ed, rows: [...ed.rows, { id: null, key: '', weight: w, url: '' }] } : ed; });
+    const removeRow = (i) => setEditing(ed => ({ ...ed, rows: ed.rows.filter((_, j) => j !== i), removed: ed.rows[i].id ? [...ed.removed, ed.rows[i].id] : ed.removed }));
+    const upload = async (i, e) => { const file = e.target.files[0]; e.target.value = ''; if (!file) return; if (file.size > 10 * 1024 * 1024) return notify('حجم فایل نباید بیشتر از 10 مگابایت باشد'); setUpIdx(i); try { const r = await apiPost('upload_font', { file: await readFileAsDataURL(file) }); setRow(i, { url: r.url }); } catch (err) { notifyError(err, 'خطا در آپلود'); } setUpIdx(-1); };
+    const save = async () => {
+        const name = editing.name.trim(); if (!name) return notify('نام خانواده‌ی فونت را وارد کنید.'); if (!/^[\p{L}\p{N} _-]+$/u.test(name)) return notify('نام فونت فقط می‌تواند حروف، عدد، فاصله، - و _ داشته باشد.');
+        if (!editing.rows.length) return notify('حداقل یک وزن لازم است.'); if (editing.rows.some(r => !r.url)) return notify('برای هر وزن یک فایل فونت آپلود کنید.');
+        if (new Set(editing.rows.map(r => r.weight)).size !== editing.rows.length) return notify('هر وزن فقط یک بار می‌تواند تعریف شود.');
+        if (families.some(f => f.name === name && !editing.rows.some(r => f.rows.some(x => x.id === r.id)))) return notify('خانواده‌ای با این نام وجود دارد؛ آن را ویرایش کنید و وزن اضافه کنید.');
+        setBusy(true);
+        try {
+            for (const id of editing.removed) await apiPost('delete_font', { id });
+            const slug = (name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'font').slice(0, 36);
+            for (const r of editing.rows) await apiPost('save_font', { ...(r.id ? { id: r.id } : {}), font_key: r.key || `${slug}_${r.weight}_${Math.random().toString(36).slice(2, 6)}`, font_name: name, font_weight: r.weight, font_url: r.url });
+            await fetchList(); fetchGlobalFonts(); notifySuccess('فونت ذخیره شد.'); if (startNew) onClose(); else setEditing(null);
+        } catch (e) { notifyError(e); }
+        setBusy(false);
+    };
+    const inp = 'w-full border rounded-xl px-3 py-2';
     return (
         <ModalShell title="کتابخانه مرکزی فونت‌ها" icon="Type" onClose={onClose}>
-            {editing ? (<div className="space-y-4 bg-slate-50 p-6 rounded-2xl border"><div><label className="text-xs font-bold block mb-1">شناسه یکتا</label><input type="text" value={editing.font_key} onChange={e => setEditing({ ...editing, font_key: e.target.value.toLowerCase().replace(/\s/g, '_').replace(/[^a-z0-9_\-]/g, '') })} className="w-full border rounded-xl px-3 py-2" dir="ltr" placeholder="yekan_bakh" /></div><div><label className="text-xs font-bold block mb-1">نام خانواده فونت (Font Family)</label><input type="text" value={editing.font_name} onChange={e => setEditing({ ...editing, font_name: e.target.value.replace(/["'`;\\]/g, '') })} className="w-full border rounded-xl px-3 py-2" dir="ltr" placeholder="YekanBakh" /></div><div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl flex flex-col items-center justify-center"><label className="text-xs font-bold text-indigo-900 mb-2">آپلود فایل فونت روی هاست (TTF/OTF/WOFF/WOFF2)</label>{uploadingFile ? <span className="text-sm font-bold text-indigo-600 animate-pulse">در حال آپلود، لطفا صبر کنید...</span> : <label className="bg-white px-4 py-2 border border-indigo-200 text-indigo-700 rounded-xl cursor-pointer hover:bg-indigo-100 font-bold text-sm shadow-sm"><Icon name="UploadCloud" className="inline-block w-4 h-4 ml-1" /> انتخاب فایل<input type="file" className="hidden" accept=".ttf,.otf,.woff,.woff2" onChange={handleFileUpload} /></label>}{editing.font_url && <span className="text-[10px] text-green-600 mt-2 font-mono truncate w-full text-center" dir="ltr">{editing.font_url}</span>}</div><div className="flex gap-3 pt-4 border-t"><button onClick={() => setEditing(null)} className="flex-1 bg-slate-200 py-3 rounded-xl font-bold">انصراف</button><button onClick={handleSave} className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold">ذخیره</button></div></div>) :
-                (<div className="space-y-4"><button onClick={() => setEditing({ font_key: '', font_name: '', font_url: '' })} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold">+ افزودن فونت جدید</button><table className="w-full text-right bg-white rounded-2xl border"><thead className="bg-slate-50 border-b"><tr><th className="p-4">نام فونت</th><th className="p-4 text-center">عملیات</th></tr></thead><tbody className="divide-y">{loading ? <tr><td colSpan="2" className="text-center p-8">بارگذاری...</td></tr> : fonts.map(f => (<tr key={f.id} className="hover:bg-slate-50"><td className="p-4 font-bold" dir="ltr"><span className="font-preview text-lg" style={{ '--preview-font': `"${f.font_name}"` }}>{f.font_name} — نمونه متن ۱۲۳</span> <span className="text-xs text-slate-400">({f.font_key})</span></td><td className="p-4 flex justify-center gap-2"><button onClick={() => setEditing({ ...f })} className="bg-slate-100 p-2 rounded text-indigo-600"><Icon name="Edit2" className="w-4 h-4" /></button><button onClick={() => handleDelete(f.id)} className="bg-slate-100 p-2 rounded text-red-600"><Icon name="Trash2" className="w-4 h-4" /></button></td></tr>))}</tbody></table></div>)}
+            {editing ? (
+                <div className="space-y-4 bg-slate-50 p-5 rounded-2xl border">
+                    <div><label htmlFor="fm-name" className="text-xs font-bold block mb-1">نام خانواده‌ی فونت (Font Family)</label><input id="fm-name" type="text" value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value.replace(/["'`;\\]/g, '') })} className={inp} dir="ltr" placeholder="YekanBakh" /></div>
+                    <div className="space-y-2"><span className="text-xs font-bold block">وزن‌ها (برای هر وزن یک فایل)</span>
+                        {editing.rows.map((r, i) => (
+                            <div key={i} className="flex flex-wrap items-center gap-2 bg-white border rounded-xl p-2">
+                                <select aria-label={`وزن ردیف ${i + 1}`} value={r.weight} onChange={e => setRow(i, { weight: Number(e.target.value) })} className="border rounded-lg px-2 py-1.5 text-sm bg-white">{FONT_WEIGHTS.map(([w, l]) => <option key={w} value={w} disabled={editing.rows.some((x, j) => j !== i && x.weight === w)}>{l} ({w})</option>)}</select>
+                                <label className={`flex items-center gap-1.5 text-sm font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-lg px-3 py-1.5 cursor-pointer ${upIdx === i ? 'opacity-50' : ''}`}><Icon name="UploadCloud" className="w-4 h-4" /> {upIdx === i ? 'در حال آپلود…' : r.url ? 'تعویض فایل' : 'آپلود فایل'}<input type="file" accept=".ttf,.otf,.woff,.woff2" className="hidden" disabled={upIdx === i} onChange={e => upload(i, e)} /></label>
+                                <span className="text-xs text-slate-500 truncate flex-1 min-w-0" dir="ltr">{r.url ? r.url.split('/').pop() : 'فایلی انتخاب نشده'}</span>
+                                {editing.rows.length > 1 && <button type="button" aria-label={`حذف وزن ${r.weight}`} onClick={() => removeRow(i)} className="text-red-600 hover:bg-red-50 rounded-lg p-1.5"><Icon name="Trash2" className="w-4 h-4" /></button>}
+                            </div>))}
+                        {editing.rows.length < 9 && <button type="button" onClick={addRow} className="text-sm font-bold text-indigo-700 flex items-center gap-1"><Icon name="Plus" className="w-4 h-4" /> افزودن وزن دیگر</button>}
+                    </div>
+                    <p className="text-[11px] text-slate-500">فایل TTF، OTF، WOFF یا WOFF2 (حداکثر ۱۰ مگابایت). بعد از ذخیره، در «مدیریت فونت» هر فیلد، علاوه بر نام فونت، وزن آن را هم انتخاب می‌کنید.</p>
+                    <div className="flex gap-2"><button type="button" onClick={save} disabled={busy || upIdx >= 0} className="btn-grad px-5 py-2 rounded-xl font-bold disabled:opacity-50">{busy ? 'در حال ذخیره…' : 'ذخیره'}</button><button type="button" onClick={() => (startNew ? onClose() : setEditing(null))} className="px-4 py-2 rounded-xl font-bold text-slate-600 hover:bg-slate-100">انصراف</button></div>
+                </div>
+            ) : (
+                <div className="space-y-4"><button onClick={() => setEditing(newFontFamily())} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold">+ افزودن فونت جدید</button>
+                    <table className="w-full text-right bg-white rounded-2xl border"><thead className="bg-slate-50 border-b"><tr><th className="p-4">خانواده‌ی فونت</th><th className="p-4">وزن‌ها</th><th className="p-4 text-center">عملیات</th></tr></thead>
+                        <tbody className="divide-y">{loading ? <tr><td colSpan="3" className="text-center p-8">بارگذاری...</td></tr> : families.length === 0 ? <tr><td colSpan="3" className="text-center p-8 text-slate-500">هنوز فونتی اضافه نشده است.</td></tr> : families.map(fam => (
+                            <tr key={fam.name} className="hover:bg-slate-50"><td className="p-4 font-bold" dir="ltr"><span className="text-lg" style={{ fontFamily: `"${fam.name}", sans-serif`, fontWeight: fam.rows[0].font_weight }}>{fam.name} — نمونه متن ۱۲۳</span></td>
+                                <td className="p-4"><div className="flex flex-wrap gap-1">{fam.rows.map(r => <span key={r.id} className="text-[11px] font-bold bg-indigo-50 text-indigo-800 rounded-full px-2 py-0.5">{(FONT_WEIGHTS.find(x => x[0] === r.font_weight) || ['', ''])[1]} ({r.font_weight})</span>)}</div></td>
+                                <td className="p-4"><div className="flex justify-center gap-2"><button type="button" onClick={() => startEdit(fam)} aria-label={`ویرایش ${fam.name}`} className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Icon name="Edit2" className="w-4 h-4" /></button><button type="button" onClick={() => deleteFamily(fam)} aria-label={`حذف ${fam.name}`} className="p-2 bg-red-50 text-red-600 rounded-lg"><Icon name="Trash2" className="w-4 h-4" /></button></div></td></tr>))}</tbody></table></div>
+            )}
         </ModalShell>
-    )
+    );
 }
 
 function ValidationsManagerModal({ onClose, fetchGlobalValidations }) {
@@ -2675,7 +2744,8 @@ function MobileEditorHint() {
     );
 }
 
-function SuperAdminWizard({ initialData, globalFonts, globalValidations, t, dicts = [], onComplete, onCancel }) {
+function SuperAdminWizard({ initialData, globalFonts, fetchGlobalFonts = () => { }, globalValidations, t, dicts = [], onComplete, onCancel }) {
+    const [showFontAdd, setShowFontAdd] = useState(false);
     const [previewLang, setPreviewLang] = useState('');
     const [data, setData, history] = useUndoableState(() => ({ ...INITIAL_WIZARD_DATA, theme: { ...platformState.defaultTheme }, ...(initialData || {}), adminPass: '', publicPass: '' }));
     const isEdit = !!data.id;
@@ -2789,6 +2859,7 @@ function SuperAdminWizard({ initialData, globalFonts, globalValidations, t, dict
 
     return (
         <div className="h-screen flex flex-col w-full">
+            {showFontAdd && <FontsManagerModal startNew onClose={() => setShowFontAdd(false)} fetchGlobalFonts={fetchGlobalFonts} />}
             <header className="glass border-b border-white/60 px-3 md:px-6 py-2 lg:py-3 flex flex-wrap gap-x-3 gap-y-2 justify-between items-center z-10">
                 <div className="flex items-center gap-2 lg:gap-3 min-w-0 max-lg:w-full lg:flex-none"><button onClick={cancel} aria-label="خروج از ویزارد" title="خروج" className="p-2 hover:bg-slate-100 rounded-full shrink-0"><Icon name="ArrowRight" /></button><div className="min-w-0"><h2 className="font-bold text-base lg:text-lg text-slate-800 flex items-center gap-2 min-w-0"><span className="truncate">{isEdit ? `${t('edit')}: ${data.orgName || ''}` : t('new_org')}</span>{dirty && <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full shrink-0">ذخیره نشده</span>}</h2><p className="text-xs text-slate-500 hidden lg:block">{t('step')} {visibleSteps.indexOf(step) + 1} {t('from')} {visibleSteps.length}: {stepTitle(step)}</p></div></div>
                 <nav aria-label="مراحل ویزارد" data-slide="solid" className="hidden lg:flex gap-1 flex-wrap">{visibleSteps.map((n, i) => {
@@ -2821,7 +2892,7 @@ function SuperAdminWizard({ initialData, globalFonts, globalValidations, t, dict
                     {step === 2 && <div className="h-full relative overflow-hidden"><LiquidBackground colors={themeOf(data)} fixed={false} /><div className="relative h-full flex items-center justify-center p-8 transform scale-90 origin-top"><TenantLoginPreview data={data} t={t} /></div></div>}
                     {step === 3 && sideEditor('front', 'frontBg')}
                     {step === 4 && !single && sideEditor('back', 'backBg')}
-                    {step === 5 && (<div className="h-full p-6 lg:p-12 overflow-y-auto flex flex-col items-center"><div className="max-w-4xl w-full"><FormOrderEditor data={data} setData={setData} /><FieldTranslationsEditor data={data} setData={setData} /><div className="bg-white p-6 rounded-2xl shadow-sm border mb-6 flex justify-between items-center"><div><h3 className="font-bold text-lg text-slate-800">تخصیص فونت به فیلدها</h3><p className="text-sm text-slate-500">از فونت‌های پیش‌فرض یا آپلودی استفاده کنید.</p></div></div><div className="bg-white rounded-2xl shadow-sm border overflow-hidden"><table className="stack-table w-full text-right text-sm"><thead className="bg-slate-50 border-b"><tr><th className="p-4">المان چاپی</th><th className="p-4">انتخاب فونت</th><th className="p-4">پیش‌نمایش</th><th className="p-4">حداکثر سایز (Max px)</th></tr></thead><tbody className="divide-y">{activeFields.filter(f => f.printOnCard && (f.type === 'text' || f.type === 'select' || f.type === 'date')).map(f => (<tr key={f.id} className="hover:bg-slate-50"><td className="p-4 font-bold text-slate-700" data-label="المان چاپی">{f.label}</td><td className="p-4" data-label="انتخاب فونت"><select className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-full max-w-[200px]" value={f.fontFamily || 'Vazirmatn'} onChange={e => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, fontFamily: e.target.value } : df) }))}><optgroup label="پیش‌فرض">{DEFAULT_FONTS.map(font => <option key={font} value={font}>{font}</option>)}</optgroup><optgroup label="کتابخانه مرکزی">{globalFonts.map(font => <option key={font.font_key} value={font.font_name}>{font.font_name}</option>)}</optgroup></select></td><td className="p-4" data-label="پیش‌نمایش"><span className="font-preview text-xl text-slate-800 whitespace-nowrap" style={{ '--preview-font': `"${f.fontFamily || 'Vazirmatn'}"`, fontWeight: f.fontWeight === 'normal' ? 400 : 700 }}>{f.label || 'نمونه متن'} ۱۲۳ Abc</span></td><td className="p-4" data-label="حداکثر سایز"><input type="number" min="8" className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-24 text-center" value={f.maxFontSize || 40} onChange={e => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, maxFontSize: Number(e.target.value) } : df) }))} /> px</td></tr>))}{activeFields.filter(f => f.printOnCard && (f.type === 'text' || f.type === 'select' || f.type === 'date')).length === 0 && <tr><td colSpan="4" className="text-center p-6 text-slate-400">فیلدی برای تنظیم فونت وجود ندارد.</td></tr>}</tbody></table></div></div></div>)}
+                    {step === 5 && (<div className="h-full p-6 lg:p-12 overflow-y-auto flex flex-col items-center"><div className="max-w-4xl w-full"><FormOrderEditor data={data} setData={setData} /><FieldTranslationsEditor data={data} setData={setData} /><div className="bg-white p-6 rounded-2xl shadow-sm border mb-6 flex justify-between items-center"><div><h3 className="font-bold text-lg text-slate-800">تخصیص فونت به فیلدها</h3><p className="text-sm text-slate-500">از فونت‌های پیش‌فرض یا آپلودی استفاده کنید.</p></div><button type="button" onClick={() => setShowFontAdd(true)} className="flex items-center gap-1.5 text-sm font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 px-4 py-2 rounded-xl shrink-0"><Icon name="Plus" className="w-4 h-4" /> افزودن فونت جدید</button></div><div className="bg-white rounded-2xl shadow-sm border overflow-hidden"><table className="stack-table w-full text-right text-sm"><thead className="bg-slate-50 border-b"><tr><th className="p-4">المان چاپی</th><th className="p-4">انتخاب فونت</th><th className="p-4">وزن</th><th className="p-4">پیش‌نمایش</th><th className="p-4">حداکثر سایز (Max px)</th></tr></thead><tbody className="divide-y">{activeFields.filter(f => f.printOnCard && (f.type === 'text' || f.type === 'select' || f.type === 'date')).map(f => (<tr key={f.id} className="hover:bg-slate-50"><td className="p-4 font-bold text-slate-700" data-label="المان چاپی">{f.label}</td><td className="p-4" data-label="انتخاب فونت"><select className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-full max-w-[200px]" value={f.fontFamily || 'Vazirmatn'} onChange={e => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, fontFamily: e.target.value, fontWeight: String(nearestWeight(normWeight(df.fontWeight), familyWeights(e.target.value))) } : df) }))}><optgroup label="پیش‌فرض">{DEFAULT_FONTS.map(font => <option key={font} value={font}>{font}</option>)}</optgroup><optgroup label="کتابخانه مرکزی">{[...new Set(globalFonts.map(font => font.font_name))].map(name => <option key={name} value={name}>{name}</option>)}</optgroup></select></td><td className="p-4" data-label="وزن"><FontWeightSelect family={f.fontFamily || 'Vazirmatn'} value={f.fontWeight} onChange={v => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, fontWeight: v } : df) }))} className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-full max-w-[150px]" /></td><td className="p-4" data-label="پیش‌نمایش"><span className="font-preview text-xl text-slate-800 whitespace-nowrap" style={{ '--preview-font': `"${f.fontFamily || 'Vazirmatn'}"`, fontWeight: normWeight(f.fontWeight) }}>{f.label || 'نمونه متن'} ۱۲۳ Abc</span></td><td className="p-4" data-label="حداکثر سایز"><input type="number" min="8" className="border rounded-lg p-2 outline-none focus:ring-2 focus:ring-indigo-500 w-24 text-center" value={f.maxFontSize || 40} onChange={e => setData(p => ({ ...p, fields: p.fields.map(df => df.id === f.id ? { ...df, maxFontSize: Number(e.target.value) } : df) }))} /> px</td></tr>))}{activeFields.filter(f => f.printOnCard && (f.type === 'text' || f.type === 'select' || f.type === 'date')).length === 0 && <tr><td colSpan="5" className="text-center p-6 text-slate-400">فیلدی برای تنظیم فونت وجود ندارد.</td></tr>}</tbody></table></div></div></div>)}
                     {step === 6 && <div className="h-full relative overflow-hidden"><LiquidBackground colors={themeOf(data)} fixed={false} /><div className="relative h-full flex items-center justify-center p-4"><TenantLoginPreview data={data} t={t} realMode /></div></div>}
                     {step === 7 && (() => { const pl = previewLang || data.langCode || 'fa'; const pt = getT(dicts, pl); return <div className="h-full p-6 overflow-y-auto"><div className="max-w-2xl mx-auto mb-3 flex items-center justify-end gap-2 text-sm"><Icon name="Languages" className="w-4 h-4 text-indigo-600" /><label htmlFor="wz-preview-lang" className="font-bold text-slate-600">زبان پیش‌نمایش</label><select id="wz-preview-lang" value={pl} onChange={e => setPreviewLang(e.target.value)} className="border rounded-lg px-2 py-1 bg-white font-bold text-slate-700">{FORM_LANGS.map(l => <option key={l.code} value={l.code}>{l.name}{l.code === (data.langCode || 'fa') ? ' (اصلی)' : ''}</option>)}</select></div><div dir={pl === 'fa' || pl === 'ar' ? 'rtl' : 'ltr'}><TenantFormPreview data={data} formData={previewFormData} setFormData={setPreviewFormData} t={pt} globalValidations={globalValidations} /></div></div>; })()}
                     {step === 8 && (<div className="h-full p-6 flex flex-col items-center justify-center overflow-y-auto"><div className="mb-6 bg-blue-50 text-blue-700 p-4 rounded-xl border border-blue-200 text-sm max-w-2xl w-full text-center shadow-sm">پیش‌نمایش بر اساس داده‌های تستی مرحله قبل ساخته شده است.</div><CardLivePreview config={data} userData={previewFormData} showActions showcase t={t} /></div>)}
@@ -3381,7 +3452,7 @@ function CardPlatform() {
         <><LiquidBackground /><div className={`mo-kids min-h-screen text-slate-800 flex flex-col relative z-10 ${!isRtl ? 'text-left' : ''}`}>
             {appState === 'LANDING' && <SystemEntry mode={systemMode} tenant={publicTenant} t={t} langControl={systemMode === 'TENANT_PORTAL' ? langControl : null} onSuperAdmin={async () => { await refreshTenants(); setAppState('SUPER_ADMIN'); }} onTenantLogin={(role, tenant) => { setCurrentTenant(tenant); setAppState(role === 'ADMIN' ? 'TENANT_DASHBOARD' : 'TENANT_FORM'); }} />}
             {appState === 'SUPER_ADMIN' && <SuperAdminPanel tenants={tenants} t={t} fetchGlobalFonts={fetchGlobalFonts} fetchGlobalValidations={fetchGlobalValidations} onNewWizard={() => { setEditingTenant(null); setAppState('WIZARD'); }} onEditWizard={(tn) => { setEditingTenant(tn); setAppState('WIZARD'); }} onDuplicateWizard={(dup) => { setEditingTenant(dup); setAppState('WIZARD'); }} onDeleteWizard={deleteTenant} onRefresh={refreshTenants} publishedId={publishedId} onPublishedSeen={() => setPublishedId(null)} onLogout={() => logout()} />}
-            {appState === 'WIZARD' && <SuperAdminWizard initialData={editingTenant} globalFonts={globalFonts} globalValidations={globalValidations} t={t} dicts={dicts} onComplete={(id) => { refreshTenants(); setAppState('SUPER_ADMIN'); setEditingTenant(null); setPublishedId(id); }} onCancel={() => { refreshTenants(); setAppState('SUPER_ADMIN'); setEditingTenant(null); }} />}
+            {appState === 'WIZARD' && <SuperAdminWizard initialData={editingTenant} globalFonts={globalFonts} fetchGlobalFonts={fetchGlobalFonts} globalValidations={globalValidations} t={t} dicts={dicts} onComplete={(id) => { refreshTenants(); setAppState('SUPER_ADMIN'); setEditingTenant(null); setPublishedId(id); }} onCancel={() => { refreshTenants(); setAppState('SUPER_ADMIN'); setEditingTenant(null); }} />}
             {appState === 'TENANT_DASHBOARD' && currentTenant && <TenantDashboard tenant={currentTenant} t={t} lang={tLang} langControl={langControl} globalValidations={globalValidations} onLogout={() => logout(currentTenant.id)} />}
             {appState === 'TENANT_FORM' && currentTenant && <TenantForm tenant={currentTenant} t={t} lang={tLang} langControl={langControl} globalValidations={globalValidations} onLogout={() => logout(currentTenant.id)} />}
         </div></>
