@@ -591,10 +591,27 @@ const renderCardSide = async ({ config, userData, side, bgUrl, baseBgUrl, showAc
             else if (val && val.startsWith('data:image')) {
                 try {
                     const userImg = await loadImage(val);
-                    ctx.save(); ctx.beginPath(); shapePath(ctx, field.shape, field.x, field.y, field.w, field.h); ctx.clip();
+                    // عکسِ برش‌خورده روی بوم موقت ساخته می‌شود تا سایه از روی شکل واقعی (و بخش شفاف PNG) ساخته شود، نه از روی کادر
+                    const sdx = Number(field.shadowDx) || 0, sdy = field.shadowDy == null ? 4 : Number(field.shadowDy) || 0, sbl = field.shadowBlur == null ? 8 : Number(field.shadowBlur) || 0;
+                    const pad = field.hasShadow ? Math.ceil(sbl * 2 + Math.abs(sdx) + Math.abs(sdy) + 4) : 0;
+                    const tc = document.createElement('canvas'); tc.width = Math.ceil(field.w + pad * 2); tc.height = Math.ceil(field.h + pad * 2); const t = tc.getContext('2d');
+                    t.translate(pad - field.x, pad - field.y); t.beginPath(); shapePath(t, field.shape, field.x, field.y, field.w, field.h); t.clip();
                     const uImgRatio = userImg.width / userImg.height; const fieldRatio = field.w / field.h; let uSrcX = 0, uSrcY = 0, uSrcW = userImg.width, uSrcH = userImg.height;
                     if (uImgRatio > fieldRatio) { uSrcW = userImg.height * fieldRatio; uSrcX = (userImg.width - uSrcW) / 2; } else { uSrcH = userImg.width / fieldRatio; uSrcY = (userImg.height - uSrcH) / 2; }
-                    drawImageHQ(ctx, userImg, uSrcX, uSrcY, uSrcW, uSrcH, field.x, field.y, field.w, field.h); ctx.restore();
+                    drawImageHQ(t, userImg, uSrcX, uSrcY, uSrcW, uSrcH, field.x, field.y, field.w, field.h);
+                    ctx.save(); if (field.hasShadow) { ctx.shadowColor = field.shadowColor || '#000000'; ctx.shadowBlur = sbl; ctx.shadowOffsetX = sdx; ctx.shadowOffsetY = sdy; } ctx.drawImage(tc, field.x - pad, field.y - pad); ctx.restore();
+                    if (field.hasStroke) { // حاشیه‌ی عکس: داخل / مرکز / بیرون
+                        const sw = Number(field.strokeWidth) || 2; const pos = field.strokePos || 'center';
+                        if (pos === 'outside') { // حاشیه‌ی بیرونی: حاشیه‌ی دو برابر روی بوم موقت، سپس داخل شکل پاک می‌شود
+                            const sp = Math.ceil(sw * 2 + 4); const oc = document.createElement('canvas'); oc.width = Math.ceil(field.w + sp * 2); oc.height = Math.ceil(field.h + sp * 2); const o = oc.getContext('2d');
+                            o.translate(sp - field.x, sp - field.y); o.strokeStyle = field.strokeColor || '#ffffff'; o.lineJoin = 'round'; o.lineWidth = sw * 2; o.beginPath(); shapePath(o, field.shape, field.x, field.y, field.w, field.h); o.stroke();
+                            o.globalCompositeOperation = 'destination-out'; o.beginPath(); shapePath(o, field.shape, field.x, field.y, field.w, field.h); o.fill(); ctx.drawImage(oc, field.x - sp, field.y - sp);
+                        } else {
+                            ctx.save(); ctx.strokeStyle = field.strokeColor || '#ffffff'; ctx.lineJoin = 'round';
+                            if (pos === 'center') ctx.lineWidth = sw; else { ctx.lineWidth = sw * 2; ctx.beginPath(); shapePath(ctx, field.shape, field.x, field.y, field.w, field.h); ctx.clip(); }
+                            ctx.beginPath(); shapePath(ctx, field.shape, field.x, field.y, field.w, field.h); ctx.stroke(); ctx.restore();
+                        }
+                    }
                 } catch (e) { }
             }
         }
@@ -1455,6 +1472,22 @@ function PropertiesSidebarPanel({ data, setData, selectedFieldId, onDelete, onSe
             {selectedField.type === 'stars' && <StarsProperties field={selectedField} update={updateSelectedMany} data={data} />}
 
             {selectedField.type === 'photo' && (<div><label className="text-xs text-slate-500 block mb-1">قالب برش</label><select className="w-full border rounded-xl px-3 py-2 text-sm bg-white" value={selectedField.shape || 'ROUNDED'} onChange={e => updateSelected('shape', e.target.value)}>{Object.entries(SHAPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>)}
+            {selectedField.type === 'photo' && (
+                <div className="space-y-3 bg-slate-50 p-3 rounded-xl border">
+                    <div>
+                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer mb-2"><input type="checkbox" data-photo="stroke" checked={!!selectedField.hasStroke} onChange={e => updateSelected('hasStroke', e.target.checked)} className="accent-indigo-600 rounded" /> حاشیه‌ی عکس (Stroke)</label>
+                        {selectedField.hasStroke && <div className="space-y-2"><div className="flex gap-2"><input type="color" aria-label="رنگ حاشیه" value={selectedField.strokeColor || '#ffffff'} onChange={e => updateSelected('strokeColor', e.target.value)} className="h-6 w-8 p-0" /><input type="number" aria-label="ضخامت حاشیه" min="0.5" step="0.5" value={selectedField.strokeWidth || 2} onChange={e => updateSelected('strokeWidth', Number(e.target.value))} className="w-16 border rounded text-xs text-center" /></div>
+                            <div role="radiogroup" aria-label="موقعیت حاشیه" data-slide="solid" className="flex gap-1">{[['inside', 'داخل'], ['center', 'مرکز'], ['outside', 'بیرون']].map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={(selectedField.strokePos || 'center') === k} onClick={() => updateSelected('strokePos', k)} className={`flex-1 px-2 py-1 rounded-lg text-xs font-bold border ${(selectedField.strokePos || 'center') === k ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700'}`}>{l}</button>)}</div></div>}
+                    </div>
+                    <div>
+                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer mb-2"><input type="checkbox" data-photo="shadow" checked={!!selectedField.hasShadow} onChange={e => updateSelected('hasShadow', e.target.checked)} className="accent-indigo-600 rounded" /> سایه‌ی عکس (Shadow)</label>
+                        {selectedField.hasShadow && <div className="grid grid-cols-4 gap-2 items-end">
+                            <label className="text-[10px] text-slate-500">رنگ<input type="color" aria-label="رنگ سایه" value={selectedField.shadowColor || '#000000'} onChange={e => updateSelected('shadowColor', e.target.value)} className="h-6 w-full p-0 block mt-1" /></label>
+                            <label className="text-[10px] text-slate-500">محوی<input type="number" aria-label="محوی سایه" min="0" value={selectedField.shadowBlur == null ? 8 : selectedField.shadowBlur} onChange={e => updateSelected('shadowBlur', Number(e.target.value))} className="w-full border rounded text-xs text-center py-0.5 mt-1" /></label>
+                            <label className="text-[10px] text-slate-500">جابه‌جایی X<input type="number" aria-label="جابه‌جایی افقی سایه" value={selectedField.shadowDx || 0} onChange={e => updateSelected('shadowDx', Number(e.target.value))} className="w-full border rounded text-xs text-center py-0.5 mt-1" dir="ltr" /></label>
+                            <label className="text-[10px] text-slate-500">جابه‌جایی Y<input type="number" aria-label="جابه‌جایی عمودی سایه" value={selectedField.shadowDy == null ? 4 : selectedField.shadowDy} onChange={e => updateSelected('shadowDy', Number(e.target.value))} className="w-full border rounded text-xs text-center py-0.5 mt-1" dir="ltr" /></label></div>}
+                    </div>
+                </div>)}
 
             {selectedField.type === 'qrcode' && (
                 <div className="bg-slate-50 p-3 rounded-xl border"><label className="text-xs text-slate-700 font-bold block mb-1">محتوای QR</label><select value={selectedField.qrSource === 'verify' ? 'verify' : 'data'} onChange={e => updateSelectedMany({ qrSource: e.target.value === 'verify' ? 'verify' : '', linkedFieldId: '', linkedColumn: '' })} className="w-full border rounded px-2 py-2 text-sm bg-white"><option value="data">ورودی دستی یا داده‌ی فیلد دیگر</option><option value="verify">لینک استعلام اعتبار کارت</option></select>{selectedField.qrSource === 'verify' && <p className="text-[10px] text-slate-500 mt-1">با اسکن QR صفحه‌ی استعلام باز می‌شود و وضعیت کارت (معتبر، منقضی، باطل) نمایش داده می‌شود. مدت اعتبار در مرحله‌ی اول ویزارد تنظیم می‌شود.</p>}</div>
@@ -2073,11 +2106,13 @@ function SettingsSection({ title, hint, icon, defaultOpen = true, children }) {
 }
 /** منوی «بیشتر» برای جمع کردن دکمه‌های کم‌کاربرد سربرگ؛ با Esc و کلیک بیرون بسته می‌شود. */
 function OverflowMenu({ label, icon, items, align = 'end' }) {
-    const [open, setOpen] = useState(false); const ref = useRef(null); const [closing, setClosing] = useState(false);
+    const [open, setOpen] = useState(false); const ref = useRef(null); const menuRef = useRef(null); const [closing, setClosing] = useState(false); const [dx, setDx] = useState(0);
+    // منو همیشه داخل صفحه می‌ماند (در گوشی از لبه‌ی چپ/راست بیرون نمی‌زند و اسکرول افقی نمی‌سازد)
+    React.useLayoutEffect(() => { if (!open) { setDx(0); return; } const el = menuRef.current; if (!el) return; const r = el.getBoundingClientRect(); const m = 10; const cur = dx; const left = r.left - cur, right = r.right - cur; let n = 0; if (right > innerWidth - m) n = innerWidth - m - right; if (left + n < m) n = m - left; if (n !== cur) setDx(n); }, [open]);
     const hide = () => { setClosing(true); setTimeout(() => { setOpen(false); setClosing(false); }, 150); };
     useEffect(() => { if (!open) return; const away = (e) => { if (ref.current && !ref.current.contains(e.target)) hide(); }; const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); hide(); } }; document.addEventListener('mousedown', away); document.addEventListener('keydown', esc, true); return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc, true); }; }, [open]);
     return (<div className="relative" ref={ref}><button type="button" aria-haspopup="menu" aria-expanded={open && !closing} onClick={() => (open ? hide() : setOpen(true))} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2.5 rounded-xl font-bold shadow-sm"><Icon name={icon} className="w-4 h-4" /> {label} <Icon name="ChevronDown" className="w-3.5 h-3.5" /></button>
-        {open && <div role="menu" style={closing ? { opacity: 0, transform: 'translateY(-4px)', transition: 'opacity .15s ease, transform .15s ease', animation: 'none' } : undefined} className={`absolute z-40 mt-2 min-w-[210px] glass-strong rounded-2xl p-1.5 shadow-xl ${align === 'end' ? 'end-0' : 'start-0'}`}>{items.map(it => <button key={it.label} role="menuitem" type="button" onClick={() => { hide(); it.onClick(); }} className="w-full flex items-center gap-2.5 text-start px-3 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-indigo-50"><Icon name={it.icon} className="w-4 h-4 text-indigo-600" /> {it.label}</button>)}</div>}</div>);
+        {open && <div role="menu" ref={menuRef} style={{ translate: `${dx}px 0`, maxWidth: 'calc(100vw - 20px)', ...(closing ? { opacity: 0, transform: 'translateY(-4px)', transition: 'opacity .15s ease, transform .15s ease', animation: 'none' } : {}) }} className={`absolute z-40 mt-2 min-w-[210px] glass-strong rounded-2xl p-1.5 shadow-xl ${align === 'end' ? 'end-0' : 'start-0'}`}>{items.map(it => <button key={it.label} role="menuitem" type="button" onClick={() => { hide(); it.onClick(); }} className="w-full flex items-center gap-2.5 text-start px-3 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-indigo-50"><Icon name={it.icon} className="w-4 h-4 text-indigo-600" /> {it.label}</button>)}</div>}</div>);
 }
 const tenantStatus = (tn) => !tn.closedReason ? ['فعال', 'bg-green-50 text-green-700'] : (tn.isActive === false ? ['غیرفعال', 'bg-red-50 text-red-700'] : ['پایان مهلت', 'bg-amber-50 text-amber-700']);
 

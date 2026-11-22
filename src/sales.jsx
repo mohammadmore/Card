@@ -24,7 +24,7 @@ export function SalesCenter({ kit, onClose, onBuildTenant, onOpenTenant }) {
                     <a href="./" target="_blank" rel="noopener" className="text-sm font-bold text-indigo-700 bg-indigo-50 px-3 py-2 rounded-xl flex items-center gap-1.5"><Icon name="ExternalLink" className="w-4 h-4" /> مشاهده‌ی صفحه</a>
                     <button onClick={onClose} aria-label="بستن" className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full"><Icon name="X" className="w-4 h-4" /></button>
                 </div>
-                <div role="tablist" aria-label="بخش‌های فروش" data-slide="solid" className="flex gap-1 px-4 pt-3 overflow-x-auto shrink-0">
+                <div role="tablist" aria-label="بخش‌های فروش" data-slide="solid" className="flex flex-wrap gap-1 px-4 pt-3 shrink-0">
                     {tabs.map(([k, ic, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold shrink-0 ${tab === k ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}><Icon name={ic} className="w-4 h-4" /> {l}</button>)}
                 </div>
                 <div className="mo-kids flex-1 overflow-y-auto p-4 sm:p-6" role="tabpanel">

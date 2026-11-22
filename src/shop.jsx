@@ -268,7 +268,7 @@ export function OrderPage({ kit, lang, setLang }) {
     return (
         <ShopShell kit={kit} lang={lang} setLang={setLang} title={t('order_title')}>
             <h1 className="text-2xl sm:text-3xl font-black text-slate-800 mb-6">{t('order_title')}</h1>
-            <nav aria-label="steps" className="flex gap-1.5 overflow-x-auto pb-2 mb-6">
+            <nav aria-label="steps" data-slide="solid" className="flex flex-wrap gap-1.5 pb-2 mb-6">
                 {steps.map((s, i) => (
                     <button key={s} type="button" onClick={() => i < step && go(i)} aria-current={i === step ? 'step' : undefined} disabled={i > step}
                         className={`flex items-center gap-2 shrink-0 rounded-full ps-1.5 pe-3 py-1.5 text-sm font-bold ${i === step ? 'bg-indigo-600 text-white' : i < step ? 'bg-white/80 text-indigo-700 border' : 'bg-white/50 text-slate-400 border'}`}>
