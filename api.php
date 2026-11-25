@@ -121,7 +121,7 @@ try {
     fail('خطا در اتصال به دیتابیس', 500);
 }
 
-const AUX_SCHEMA_VERSION = '3';
+const AUX_SCHEMA_VERSION = '4';
 function ensure_aux_schema(PDO $pdo): void {
     static $done = false; if ($done) return; $done = true;
     // جدول‌های کمکی یک بار ساخته می‌شوند و نسخه‌ی آن در تنظیمات ثبت می‌شود؛ بعد از آن دیگر هر بار CREATE اجرا نمی‌شود
@@ -136,6 +136,8 @@ function ensure_aux_schema(PDO $pdo): void {
     $pdo->exec("CREATE TABLE IF NOT EXISTS otp_codes (mobile VARCHAR(15) PRIMARY KEY, code_hash VARCHAR(255) NOT NULL, expires_at DATETIME NOT NULL, attempts INT NOT NULL DEFAULT 0, sent_at DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $pdo->exec("CREATE TABLE IF NOT EXISTS rate_limits (k CHAR(40) PRIMARY KEY, cnt INT NOT NULL DEFAULT 0, window_start DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $pdo->exec("CREATE TABLE IF NOT EXISTS notify_log (id BIGINT AUTO_INCREMENT PRIMARY KEY, channel VARCHAR(20) NOT NULL, target VARCHAR(190) NOT NULL DEFAULT '', subject VARCHAR(190) NOT NULL DEFAULT '', ok TINYINT NOT NULL DEFAULT 0, error VARCHAR(500) NOT NULL DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // گروه‌ها (خانواده‌ی سازمان‌ها): یک صفحه‌ی ورود مشترک برای چند کارت/بنر
+    $pdo->exec("CREATE TABLE IF NOT EXISTS tenant_groups (id VARCHAR(64) PRIMARY KEY, slug VARCHAR(64) NULL, data LONGTEXT NOT NULL, created_at DATETIME NOT NULL, UNIQUE KEY uq_groups_slug (slug)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     // وزن فونت (۱۰۰ تا ۹۰۰): چند فایل با یک نام خانواده و وزن‌های مختلف
     try { if (!$pdo->query("SHOW COLUMNS FROM global_fonts LIKE 'font_weight'")->fetch()) $pdo->exec("ALTER TABLE global_fonts ADD COLUMN font_weight SMALLINT NOT NULL DEFAULT 400"); } catch (Throwable $e) { error_log('[aux] font_weight: ' . $e->getMessage()); }
     // محتوای صفحه‌ی معرفی (دو زبان) از ۶۴ کیلوبایت بیشتر می‌شود
@@ -181,7 +183,7 @@ function throttle_clear(PDO $pdo, string $key): void { $pdo->prepare("DELETE FRO
 
 function session_info(): array {
     global $pdo;
-    return ['super' => is_super(), 'tenants' => (object)($_SESSION['tenants'] ?? []), 'platform' => platform_public(platform_settings($pdo), is_super())];
+    return ['super' => is_super(), 'tenants' => (object)($_SESSION['tenants'] ?? []), 'groups' => (object)($_SESSION['groups'] ?? []), 'platform' => platform_public(platform_settings($pdo), is_super())];
 }
 
 // --- تنظیمات کلی پلتفرم (مثل لوگوی پنل سوپرادمین و لوگوی پیش‌فرض سازمان‌ها) ---
@@ -285,7 +287,43 @@ function slug_format_error(string $slug): ?string {
 function slug_taken(PDO $pdo, string $slug, string $exceptId): bool {
     ensure_slug_column($pdo);
     $stmt = $pdo->prepare("SELECT id FROM tenants WHERE (slug = ? OR id = ?) AND id <> ?"); $stmt->execute([$slug, $slug, $exceptId]);
+    if ($stmt->fetch()) return true;
+    ensure_aux_schema($pdo);
+    $stmt = $pdo->prepare("SELECT id FROM tenant_groups WHERE (slug = ? OR id = ?) AND id <> ?"); $stmt->execute([$slug, $slug, $exceptId]);
     return (bool)$stmt->fetch();
+}
+// --- گروه (خانواده): چند سازمان زیر یک صفحه‌ی ورود؛ بعد از ورود، کاربر یکی از کارت‌ها/بنرها را انتخاب می‌کند ---
+function load_group(PDO $pdo, string $key): ?array {
+    if ($key === '') return null;
+    ensure_aux_schema($pdo);
+    $stmt = $pdo->prepare("SELECT data FROM tenant_groups WHERE id = ? OR slug = ? LIMIT 1"); $stmt->execute([$key, strtolower($key)]);
+    $row = $stmt->fetch(); if (!$row) return null;
+    $g = json_decode($row['data'], true); return is_array($g) ? $g : null;
+}
+function store_group(PDO $pdo, array $g): void {
+    ensure_aux_schema($pdo);
+    $slug = ($g['slug'] ?? '') !== '' ? (string)$g['slug'] : null;
+    $pdo->prepare("INSERT INTO tenant_groups (id, data, created_at, slug) VALUES (?, ?, NOW(), ?) ON DUPLICATE KEY UPDATE data = VALUES(data), slug = VALUES(slug)")->execute([$g['id'], json_enc($g), $slug]);
+}
+/** نمای عمومی گروه برای صفحه‌ی ورود (هم‌شکل نمای عمومی سازمان تا همان صفحه‌ی ورود استفاده شود). */
+function group_public_view(array $g): array {
+    return ['id' => $g['id'], 'slug' => $g['slug'] ?? '', 'isGroup' => true, 'orgName' => $g['name'] ?? '', 'logoUrl' => $g['logoUrl'] ?? '', 'logoUrlDark' => $g['logoUrlDark'] ?? '',
+        'welcomeText' => $g['welcomeText'] ?? '', 'langCode' => 'fa', 'allowLangSwitch' => false, 'closedReason' => null, 'theme' => sanitize_theme($g['theme'] ?? null)];
+}
+/** فهرست کارت/بنرهای عضو (فقط سازمان‌های موجود و باز) برای انتخاب بعد از ورود. */
+function group_members_view(PDO $pdo, array $g): array {
+    $out = [];
+    foreach ((array)($g['members'] ?? []) as $m) {
+        $t = is_array($m) ? load_tenant($pdo, (string)($m['id'] ?? '')) : null; if (!$t) continue;
+        $closed = tenant_closed_reason($t);
+        $out[] = ['id' => $t['id'], 'orgName' => ($m['label'] ?? '') !== '' ? $m['label'] : ($t['orgName'] ?? ''), 'desc' => (string)($m['desc'] ?? ''),
+            'logoUrl' => $t['logoUrl'] ?? '', 'logoUrlDark' => $t['logoUrlDark'] ?? '', 'theme' => sanitize_theme($t['theme'] ?? null),
+            'kind' => ($t['cardLayout'] ?? 'double') === 'single' ? 'banner' : 'card', 'closedReason' => $closed];
+    }
+    return $out;
+}
+function group_admin_view(PDO $pdo, array $g): array {
+    $v = $g; unset($v['passHash']); $v['hasPass'] = !empty($g['passHash']); $v['membersView'] = group_members_view($pdo, $g); return $v;
 }
 /** یافتن سازمان با شناسه یا آدرس اختصاصی. */
 function find_tenant(PDO $pdo, string $key): ?array {
@@ -789,10 +827,12 @@ $routes = [
         audit($pdo, $orgId, 'login', '', ['role' => $role]);
         respond(['success' => true, 'role' => $role, 'tenant' => tenant_client_view($t, is_super())]);
     },
-    'POST logout' => function () use ($input) {
+    'POST logout' => function () use ($pdo, $input) {
         $tenantId = in_str($input, 'tenantId', 64);
-        if ($tenantId !== '') unset($_SESSION['tenants'][$tenantId]); else unset($_SESSION['super']);
-        if (empty($_SESSION['super']) && empty($_SESSION['tenants'])) { $_SESSION = []; session_regenerate_id(true); }
+        $groupId = in_str($input, 'groupId', 64);
+        if ($groupId !== '') { unset($_SESSION['groups'][$groupId]); $g = load_group($pdo, $groupId); if ($g) foreach ((array)($g['members'] ?? []) as $m) { $mid = (string)($m['id'] ?? ''); if (($_SESSION['tenants'][$mid] ?? null) === 'USER') unset($_SESSION['tenants'][$mid]); } }
+        elseif ($tenantId !== '') unset($_SESSION['tenants'][$tenantId]); else unset($_SESSION['super']);
+        if (empty($_SESSION['super']) && empty($_SESSION['tenants']) && empty($_SESSION['groups'])) { $_SESSION = []; session_regenerate_id(true); }
         respond(['success' => true]);
     },
 
@@ -1000,6 +1040,70 @@ $routes = [
         if ($stmt->rowCount() === 0) fail('سازمان یافت نشد', 404);
         audit($pdo, $id, 'tenant_delete', $id);
         respond(['success' => true]);
+    },
+    // --- گروه‌ها (خانواده‌ی کارت‌ها و بنرها) ---
+    'GET get_groups' => function () use ($pdo) {
+        require_super(); ensure_aux_schema($pdo);
+        $out = [];
+        foreach ($pdo->query("SELECT data FROM tenant_groups ORDER BY created_at DESC") as $row) { $g = json_decode($row['data'], true); if (is_array($g)) $out[] = group_admin_view($pdo, $g); }
+        respond($out);
+    },
+    'POST save_group' => function () use ($pdo, $input) {
+        require_super();
+        $id = in_str($input, 'id', 64); $existing = null;
+        if ($id !== '') { $existing = load_group($pdo, $id); if (!$existing) fail('گروه یافت نشد', 404); $id = $existing['id']; }
+        else $id = new_id('grp_');
+        $name = in_str($input, 'name', 200); if ($name === '') fail_field('نام گروه الزامی است.', 'name');
+        $g = ['id' => $id, 'name' => $name, 'welcomeText' => in_str($input, 'welcomeText', 1000), 'theme' => sanitize_theme($input['theme'] ?? null)];
+        foreach (['logoUrl', 'logoUrlDark'] as $k) {
+            $g[$k] = trim(in_str($input, $k, 1000));
+            if ($g[$k] !== '' && !valid_image_url($g[$k])) fail_field('لینک لوگو نامعتبر است. یک فایل آپلود کنید یا لینکی که با https:// شروع می‌شود بدهید.', $k);
+        }
+        $slug = strtolower(in_str($input, 'slug', 64));
+        if ($slug !== '') {
+            if (($err = slug_format_error($slug)) !== null) fail_field($err, 'slug');
+            if (slug_taken($pdo, $slug, $id)) fail_field('این آدرس قبلاً ثبت شده است.', 'slug');
+        }
+        $g['slug'] = $slug;
+        $members = []; $seen = [];
+        foreach (in_arr($input, 'members') as $m) {
+            if (!is_array($m)) continue; $mid = in_str($m, 'id', 64);
+            if ($mid === '' || isset($seen[$mid]) || !load_tenant($pdo, $mid)) continue; $seen[$mid] = true;
+            $members[] = ['id' => $mid, 'label' => in_str($m, 'label', 200), 'desc' => in_str($m, 'desc', 300)];
+            if (count($members) >= 30) break;
+        }
+        if (!$members) fail_field('حداقل یک کارت یا بنر را به گروه اضافه کنید.', 'members');
+        $g['members'] = $members;
+        $pass = is_string($input['password'] ?? null) ? $input['password'] : '';
+        if ($existing === null && $pass === '') fail_field('تعیین رمز ورود گروه الزامی است.', 'password');
+        if ($pass !== '' && mb_strlen($pass) < 8) fail_field('رمز باید حداقل ۸ کاراکتر باشد.', 'password');
+        $g['passHash'] = $pass !== '' ? password_hash($pass, PASSWORD_DEFAULT) : ($existing['passHash'] ?? '');
+        store_group($pdo, $g);
+        audit($pdo, '', $existing ? 'group_update' : 'group_create', $id, ['orgName' => $name]);
+        respond(['success' => true, 'group' => group_admin_view($pdo, $g)]);
+    },
+    'POST delete_group' => function () use ($pdo, $input) {
+        require_super(); ensure_aux_schema($pdo);
+        $id = in_str($input, 'id', 64); if (!valid_id($id)) fail('شناسه نامعتبر');
+        $stmt = $pdo->prepare("DELETE FROM tenant_groups WHERE id = ?"); $stmt->execute([$id]);
+        if ($stmt->rowCount() === 0) fail('گروه یافت نشد', 404);
+        audit($pdo, '', 'group_delete', $id);
+        respond(['success' => true]);
+    },
+    'POST login_group' => function () use ($pdo, $input) {
+        $g = load_group($pdo, in_str($input, 'orgId', 64));
+        if (!$g) fail('سازمان یافت نشد', 404);
+        $key = throttle_check($pdo, 'group:' . $g['id']);
+        $pass = is_string($input['passcode'] ?? null) ? $input['passcode'] : '';
+        if ($pass === '' || empty($g['passHash']) || !password_verify($pass, $g['passHash'])) { audit($pdo, '', 'group_login_failed', $g['id']); throttle_fail($pdo, $key); fail('کد وارد شده معتبر نیست.', 401); }
+        throttle_clear($pdo, $key);
+        $members = group_members_view($pdo, $g);
+        session_regenerate_id(true);
+        $_SESSION['groups'][$g['id']] = true; $_SESSION['last_activity'] = time();
+        // رمز گروه، نقش «کاربر» را در هر عضوِ باز می‌دهد (مدیر هر کارت همچنان با رمز خودش وارد می‌شود)
+        foreach ($members as $m) if ($m['closedReason'] === null && (($_SESSION['tenants'][$m['id']] ?? null) !== 'ADMIN')) $_SESSION['tenants'][$m['id']] = 'USER';
+        audit($pdo, '', 'group_login', $g['id']);
+        respond(['success' => true, 'members' => $members]);
     },
     'POST test_webhook' => function () use ($pdo, $input) {
         // ارسال آزمایشی با داده‌ی نمونه (بدون ذخیره‌ی تنظیمات)
@@ -1305,6 +1409,11 @@ $routes = [
         $key = is_string($_GET['org'] ?? null) ? $_GET['org'] : '';
         if ($key !== '') {
             $t = find_tenant($pdo, $key);
+            if (!$t && ($g = load_group($pdo, $key))) {
+                $out['tenantPublic'] = group_public_view($g);
+                if (!empty($_SESSION['groups'][$g['id']])) $out['groupMembers'] = group_members_view($pdo, $g);
+                respond($out);
+            }
             if (!$t) fail('سازمان یافت نشد', 404);
             $out['tenantPublic'] = tenant_public_view($t);
             if (is_super() || tenant_role((string)$t['id'])) $out['tenant'] = tenant_client_view($t, is_super());

@@ -1989,7 +1989,7 @@ function AdminCardEditModal({ tenant, card, onClose, onSave, t, globalValidation
 // ==========================================
 // 6. MAIN SCREENS & APP
 // ==========================================
-function SystemEntry({ mode, tenant, t, langControl, onSuperAdmin, onTenantLogin }) {
+function SystemEntry({ mode, tenant, t, langControl, onSuperAdmin, onTenantLogin, onGroupLogin }) {
     const plat = usePlatform();
     const [passcode, setPasscode] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
     // قفل موقت پس از تلاش‌های ناموفق: شمارش معکوس تا امکان ورود دوباره
@@ -2002,6 +2002,7 @@ function SystemEntry({ mode, tenant, t, langControl, onSuperAdmin, onTenantLogin
         e.preventDefault(); if (!passcode || busy || lockLeft > 0) return; setBusy(true); setError('');
         try {
             if (mode === 'SUPER_ADMIN_PORTAL') { await apiPost('login_super', { passcode }); onSuperAdmin(); }
+            else if (tenant && tenant.isGroup) { const r = await apiPost('login_group', { orgId: tenant.id, passcode }); onGroupLogin(r.members || []); }
             else { const r = await apiPost('login_tenant', { orgId: tenant.id, passcode }); onTenantLogin(r.role, r.tenant); }
         } catch (err) {
             if (err.status === 429 && err.retryAfter) { setLockUntil(Date.now() + err.retryAfter * 1000); setNow(Date.now()); }
@@ -2011,6 +2012,96 @@ function SystemEntry({ mode, tenant, t, langControl, onSuperAdmin, onTenantLogin
     };
     return (
         <div className="flex flex-col items-center justify-center min-h-screen p-4"><div className="glass-strong p-8 rounded-3xl w-full max-w-md relative overflow-hidden flex flex-col"><div className="relative z-10 flex-1 flex flex-col"><div className="flex justify-between items-center text-slate-600 mb-2"><ThemeToggle t={t} compact />{langControl && <LanguageSwitcher control={langControl} />}</div><div className="flex justify-center mb-6"><LogoImg src={tenant && tenant.logoUrl} srcDark={tenant && tenant.logoUrlDark} alt="Logo" fallbackText={tenant ? tenantText(tenant, 'orgName', t.lang) : ''} className="h-20 object-contain drop-shadow-md" /></div>{tenant && tenant.closedReason && <div role="alert" className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm text-center">{tenant.closedReason}</div>}<h1 className="text-2xl font-bold text-center text-slate-800 mb-2">{tenant ? tenantText(tenant, 'orgName', t.lang) : plat.name}</h1><p className="text-center text-slate-600 mb-8 text-sm">{tenant ? (tenantText(tenant, 'welcomeText', t.lang) || t('enter_passcode')) : t('enter_passcode')}</p><form onSubmit={handleLogin} className="space-y-4 mb-4"><div><label htmlFor="gate-pass" className="block text-sm font-bold text-slate-700 mb-1.5 text-center">{String(t('passcode')).replace(/[….]+$/, '')}</label><input id="gate-pass" type="password" aria-label={t('passcode')} value={passcode} onChange={(e) => { setPasscode(e.target.value); setError(''); }} autoComplete="current-password" className="w-full px-4 py-3 bg-white/70 border border-white rounded-xl text-slate-800 text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder={t('passcode')} autoFocus /></div>{error && <p role="alert" className="text-red-600 text-sm text-center">{error}</p>}{lockLeft > 0 && <p role="status" className="text-amber-700 text-sm text-center font-bold">{t('locked_wait', fmtLeft(lockLeft))}</p>}<button type="submit" disabled={busy || !passcode || lockLeft > 0} className="w-full btn-grad py-3 rounded-xl font-bold transition-all">{busy ? t('processing') : t('login')}</button></form><div className="mt-auto pt-6 border-t border-white/60"><BrandingFooter /></div></div></div></div>
+    );
+}
+
+/** صفحه‌ی انتخاب بعد از ورود به یک گروه: کارت‌ها و بنرهای عضو؛ با کلیک روی هرکدام فرم ساخت همان باز می‌شود. */
+function GroupHome({ group, members, t, langControl, busyId, onPick, onLogout }) {
+    return (
+        <div className="flex flex-col items-center min-h-screen p-4 sm:p-8">
+            <div className="glass-strong rounded-3xl w-full max-w-3xl p-6 sm:p-8 relative">
+                <div className="flex justify-between items-center text-slate-600 mb-2">
+                    <button type="button" onClick={onLogout} aria-label={t('logout')} title={t('logout')} className="w-9 h-9 inline-flex items-center justify-center rounded-lg hover:bg-red-50 hover:text-red-500"><Icon name="LogOut" className="w-5 h-5" /></button>
+                    <div className="flex items-center gap-3"><ThemeToggle t={t} compact />{langControl && <LanguageSwitcher control={langControl} />}</div>
+                </div>
+                <div className="flex justify-center mb-4"><LogoImg src={group.logoUrl} srcDark={group.logoUrlDark} alt="" fallbackText={group.orgName} className="h-20 object-contain drop-shadow-md" /></div>
+                <h1 className="text-2xl font-bold text-center text-slate-800 mb-2">{group.orgName}</h1>
+                {group.welcomeText && <p className="text-center text-slate-600 mb-6 text-sm whitespace-pre-line">{group.welcomeText}</p>}
+                <p className="text-center text-sm font-bold text-slate-700 mb-4">یکی از موارد زیر را انتخاب کنید</p>
+                {members.length === 0 && <p className="text-center text-sm text-slate-500 py-6">فعلاً موردی برای شما تعریف نشده است.</p>}
+                <div className="grid gap-3 sm:grid-cols-2" data-testid="group-members">
+                    {members.map(m => { const off = !!m.closedReason; return (
+                        <button key={m.id} type="button" disabled={off || !!busyId} onClick={() => onPick(m)} title={off ? m.closedReason : ''} className={`group text-start flex items-center gap-4 p-4 rounded-2xl border border-white bg-white/70 shadow-sm transition ${off ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-lg hover:-translate-y-0.5 hover:bg-white'}`}>
+                            <span className="w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center text-white shadow" style={{ backgroundImage: `linear-gradient(135deg, ${m.theme.c1}, ${m.theme.c2}, ${m.theme.c3})` }}>
+                                {m.logoUrl ? <LogoImg src={m.logoUrl} srcDark={m.logoUrlDark} usePlatform={false} alt="" className="w-10 h-10 object-contain" /> : <Icon name={m.kind === 'banner' ? 'Image' : 'CreditCard'} className="w-7 h-7" />}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                                <span className="block font-bold text-slate-800 truncate">{m.orgName}</span>
+                                <span className="block text-xs text-slate-500 mt-0.5">{off ? m.closedReason : (m.desc || (m.kind === 'banner' ? 'ساخت بنر' : 'ساخت کارت'))}</span>
+                            </span>
+                            {busyId === m.id ? <span className="spinner !w-5 !h-5" aria-hidden="true" /> : <Icon name="ArrowLeft" className="w-5 h-5 text-slate-400" />}
+                        </button>
+                    ); })}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/** مدیریت گروه‌ها (فقط سوپرادمین): چند کارت/بنر را زیر یک صفحه‌ی ورود جمع می‌کند. */
+function GroupsManagerModal({ tenants, onClose }) {
+    const [groups, setGroups] = useState(null); const [edit, setEdit] = useState(null); const [busy, setBusy] = useState(false); const [errors, setErrors] = useState({});
+    const rewriteOk = useRewriteOk();
+    const load = () => apiGet('get_groups').then(d => setGroups(Array.isArray(d) ? d : [])).catch(e => { notifyError(e); setGroups([]); });
+    useEffect(() => { load(); }, []);
+    const blank = () => ({ id: '', name: '', slug: '', welcomeText: 'خوش آمدید. رمز ورود را وارد کنید.', logoUrl: '', logoUrlDark: '', theme: { ...DEFAULT_THEME }, password: '', members: [] });
+    const startEdit = (g) => { setErrors({}); setEdit(g ? { ...g, password: '', members: (g.members || []).map(m => ({ ...m })) } : blank()); };
+    const orgOf = (id) => (tenants || []).find(x => x.id === id);
+    const save = async () => {
+        setBusy(true); setErrors({});
+        try { await apiPost('save_group', { ...edit }); notifySuccess('گروه ذخیره شد.'); setEdit(null); load(); }
+        catch (e) { if (e.field) setErrors({ [e.field]: e.message }); else notifyError(e); }
+        setBusy(false);
+    };
+    const remove = async (g) => { if (!(await askConfirm(`گروه «${g.name}» حذف شود؟ (کارت‌ها و بنرهای عضو حذف نمی‌شوند.)`, { danger: true, okText: 'حذف' }))) return; try { await apiPost('delete_group', { id: g.id }); load(); } catch (e) { notifyError(e); } };
+    const setM = (i, k, v) => setEdit(p => ({ ...p, members: p.members.map((m, j) => j === i ? { ...m, [k]: v } : m) }));
+    const move = (i, d) => setEdit(p => { const a = [...p.members]; const j = i + d; if (j < 0 || j >= a.length) return p; [a[i], a[j]] = [a[j], a[i]]; return { ...p, members: a }; });
+    const free = (tenants || []).filter(x => !edit || !edit.members.some(m => m.id === x.id));
+    return (
+        <ModalShell title={edit ? (edit.id ? 'ویرایش گروه' : 'گروه جدید') : 'گروه‌ها (خانواده‌ی کارت و بنر)'} icon="Layers" onClose={edit ? () => setEdit(null) : onClose} wide>
+            {!edit && (<div className="space-y-3">
+                <p className="text-sm text-slate-600">یک گروه چند کارت/بنر را زیر یک صفحه‌ی ورود جمع می‌کند: لوگو، متن خوش‌آمد و رنگ‌ها و رمز ورود از گروه تنظیم می‌شود و کاربر بعد از ورود، یکی از کارت‌ها/بنرها را انتخاب می‌کند.</p>
+                <button type="button" onClick={() => startEdit(null)} className="btn-grad text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2"><Icon name="Plus" className="w-4 h-4" /> گروه جدید</button>
+                {groups === null && <p className="text-sm text-slate-500">در حال بارگذاری…</p>}
+                {groups && groups.length === 0 && <p className="text-sm text-slate-500 py-4 text-center">هنوز گروهی ساخته نشده است.</p>}
+                {(groups || []).map(g => { const link = tenantLinkFor(g, rewriteOk); return (
+                    <div key={g.id} className="bg-white/60 border border-white rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex-1 min-w-0"><div className="font-bold text-slate-800">{g.name}</div><div className="text-xs text-slate-500 mt-1">{(g.membersView || []).map(m => m.orgName).join('، ') || '—'}</div><div className="text-[11px] text-slate-400 mt-1 truncate" dir="ltr">{link}</div></div>
+                        <div className="flex gap-2 flex-wrap"><button type="button" onClick={() => copyText(link, 'لینک کپی شد.')} className="bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-sm font-bold">کپی لینک</button><button type="button" onClick={() => startEdit(g)} className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg text-sm font-bold">ویرایش</button><button type="button" onClick={() => remove(g)} className="bg-red-50 hover:bg-red-100 text-red-600 px-3 py-1.5 rounded-lg text-sm font-bold">حذف</button></div>
+                    </div>); })}
+            </div>)}
+            {edit && (<div className="space-y-4">
+                <div><label htmlFor="grp-name" className="text-sm font-bold block mb-1">نام گروه</label><input id="grp-name" value={edit.name} onChange={e => setEdit(p => ({ ...p, name: e.target.value }))} className="w-full border border-slate-300 rounded-xl px-3 py-2" />{errors.name && <p role="alert" className="text-red-600 text-xs mt-1">{errors.name}</p>}</div>
+                <div><label htmlFor="grp-slug" className="text-sm font-bold block mb-1">آدرس اختصاصی (اختیاری)</label><input id="grp-slug" dir="ltr" value={edit.slug || ''} onChange={e => setEdit(p => ({ ...p, slug: e.target.value.toLowerCase() }))} placeholder="acme-family" className="w-full border border-slate-300 rounded-xl px-3 py-2 text-left" />{errors.slug && <p role="alert" className="text-red-600 text-xs mt-1">{errors.slug}</p>}</div>
+                <div><label htmlFor="grp-pass" className="text-sm font-bold block mb-1">رمز ورود گروه {edit.id && <span className="text-[11px] font-normal text-slate-500">(خالی = بدون تغییر)</span>}</label><input id="grp-pass" type="password" autoComplete="new-password" value={edit.password} onChange={e => setEdit(p => ({ ...p, password: e.target.value }))} className="w-full border border-slate-300 rounded-xl px-3 py-2" />{errors.password && <p role="alert" className="text-red-600 text-xs mt-1">{errors.password}</p>}<p className="text-[11px] text-slate-500 mt-1">این رمز به کاربر اجازه‌ی ساخت در همه‌ی کارت/بنرهای عضو را می‌دهد. مدیر هر کارت همچنان با رمز مدیر خودش (از لینک همان سازمان) وارد می‌شود.</p></div>
+                <ImageSettingField id="grp-logo" label="لوگوی گروه" hint="در صفحه‌ی ورود و صفحه‌ی انتخاب نشان داده می‌شود." value={edit.logoUrl || ''} onChange={v => setEdit(p => ({ ...p, logoUrl: v }))} error={errors.logoUrl} maxSize={800} clearLabel="حذف لوگو" />
+                <ImageSettingField id="grp-logo-dark" dark label="لوگوی حالت تیره (اختیاری)" value={edit.logoUrlDark || ''} onChange={v => setEdit(p => ({ ...p, logoUrlDark: v }))} error={errors.logoUrlDark} fallback={(edit.logoUrl || '').trim()} maxSize={800} clearLabel="حذف (استفاده از لوگوی عادی)" />
+                <div><label htmlFor="grp-welcome" className="text-sm font-bold block mb-1">متن خوش‌آمدگویی</label><textarea id="grp-welcome" value={edit.welcomeText} onChange={e => setEdit(p => ({ ...p, welcomeText: e.target.value }))} className="w-full border border-slate-300 rounded-xl p-3 h-24" /></div>
+                <ThemeEditor data={edit} setData={setEdit} title="رنگ‌های پس‌زمینه‌ی صفحه‌ی گروه" hint="" />
+                <div>
+                    <label className="text-sm font-bold block mb-1">کارت‌ها و بنرهای گروه (به ترتیب نمایش)</label>
+                    {errors.members && <p role="alert" className="text-red-600 text-xs mb-1">{errors.members}</p>}
+                    <div className="space-y-2">{edit.members.map((m, i) => { const o = orgOf(m.id); return (
+                        <div key={m.id} className="bg-white/60 border border-white rounded-xl p-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto] items-center">
+                            <input aria-label="عنوان" value={m.label || ''} onChange={e => setM(i, 'label', e.target.value)} placeholder={o ? o.orgName : m.id} className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm" />
+                            <input aria-label="توضیح کوتاه" value={m.desc || ''} onChange={e => setM(i, 'desc', e.target.value)} placeholder="توضیح کوتاه (اختیاری)" className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm" />
+                            <div className="flex gap-1"><button type="button" aria-label="بالا" onClick={() => move(i, -1)} className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200">↑</button><button type="button" aria-label="پایین" onClick={() => move(i, 1)} className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200">↓</button><button type="button" aria-label="حذف از گروه" onClick={() => setEdit(p => ({ ...p, members: p.members.filter((_, j) => j !== i) }))} className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-600">✕</button></div>
+                        </div>); })}</div>
+                    {free.length > 0 && <select aria-label="افزودن کارت یا بنر" value="" onChange={e => { const id = e.target.value; if (id) setEdit(p => ({ ...p, members: [...p.members, { id, label: '', desc: '' }] })); }} className="mt-2 border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white"><option value="">+ افزودن کارت یا بنر…</option>{free.map(x => <option key={x.id} value={x.id}>{x.orgName}</option>)}</select>}
+                </div>
+                <div className="flex gap-3 justify-end pt-2"><button type="button" onClick={() => setEdit(null)} className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 font-bold">انصراف</button><button type="button" disabled={busy} onClick={save} className="btn-grad text-white px-6 py-2 rounded-xl font-bold disabled:opacity-60">{busy ? 'در حال ذخیره…' : 'ذخیره'}</button></div>
+            </div>)}
+        </ModalShell>
     );
 }
 
@@ -2287,7 +2378,7 @@ function SuperAdminPanel({ tenants, t, fetchGlobalFonts, fetchGlobalValidations,
     const [showSales, setShowSales] = useState(false); const [salesCounts, setSalesCounts] = useState({ newLeads: 0, paidOrders: 0 });
     useEffect(() => { if (showSales) return; apiGet('sales_counts').then(setSalesCounts).catch(() => { }); }, [showSales]);
     const validTenants = Array.isArray(tenants) ? tenants : []; const plat = usePlatform();
-    const [showPresetsManager, setShowPresetsManager] = useState(false); const [showFontsManager, setShowFontsManager] = useState(false); const [showValidationsManager, setShowValidationsManager] = useState(false); const [showPlatformSettings, setShowPlatformSettings] = useState(false);
+    const [showGroups, setShowGroups] = useState(false); const [showPresetsManager, setShowPresetsManager] = useState(false); const [showFontsManager, setShowFontsManager] = useState(false); const [showValidationsManager, setShowValidationsManager] = useState(false); const [showPlatformSettings, setShowPlatformSettings] = useState(false);
     const rewriteOk = useRewriteOk();
     const [search, setSearch] = useState(''); const [statusF, setStatusF] = useState(''); const [sortBy, setSortBy] = useState('created'); const [linkFor, setLinkFor] = useState(null); const [auditFor, setAuditFor] = useState(null);
     useEffect(() => { if (publishedId) { const tn = validTenants.find(x => x.id === publishedId); if (tn) { setLinkFor({ tenant: tn, justPublished: true }); onPublishedSeen(); } } }, [publishedId, validTenants]);
@@ -2310,11 +2401,12 @@ function SuperAdminPanel({ tenants, t, fetchGlobalFonts, fetchGlobalValidations,
             {showPresetsManager && <PresetsManagerModal onClose={() => setShowPresetsManager(false)} />}
             {showPlatformSettings && <PlatformSettingsModal onClose={() => setShowPlatformSettings(false)} />}
             {showSales && <SalesCenter kit={SHOP_KIT} onClose={() => setShowSales(false)} onBuildTenant={async (o) => { const data = await tenantFromOrder(o); setShowSales(false); onEditWizard(data); }} onOpenTenant={(id) => { const tn = validTenants.find(x => x.id === id); if (!tn) { notify('سازمان پیدا نشد؛ فهرست را تازه کنید.'); return; } const c = { ...tn }; delete c.stats; delete c.closedReason; setShowSales(false); onEditWizard(c); }} />}
+            {showGroups && <GroupsManagerModal tenants={validTenants} onClose={() => setShowGroups(false)} />}
             {showFontsManager && <FontsManagerModal onClose={() => setShowFontsManager(false)} fetchGlobalFonts={fetchGlobalFonts} />}
             {showValidationsManager && <ValidationsManagerModal onClose={() => setShowValidationsManager(false)} fetchGlobalValidations={fetchGlobalValidations} />}
             {linkFor && <TenantLinkModal tenant={linkFor.tenant} justPublished={linkFor.justPublished} onClose={() => setLinkFor(null)} />}
             {auditFor && <AuditLogModal tenantId={auditFor.id} title={auditFor.id ? `گزارش فعالیت «${auditFor.orgName}»` : 'گزارش فعالیت همه‌ی سازمان‌ها'} t={t} onClose={() => setAuditFor(null)} />}
-            <header className="relative z-30 flex flex-col lg:flex-row justify-between items-center mb-6 glass p-4 rounded-2xl gap-4"><div className="flex items-center gap-4"><LogoImg alt="" className="w-12 h-12 object-contain" /><div><h1 className="text-xl font-bold text-slate-800 lg:whitespace-nowrap">{plat.name}</h1><p className="text-sm text-slate-500">{t('manage_platforms')}</p><p className="text-xs text-slate-500 mt-1 flex items-center gap-3"><span className="flex items-center gap-1"><Icon name="Building2" className="w-3.5 h-3.5" />{validTenants.length} سازمان</span><span className="flex items-center gap-1"><Icon name="CreditCard" className="w-3.5 h-3.5" />{totalCards} کارت</span></p></div></div><div className="flex items-center gap-2 flex-wrap justify-end"><OverflowMenu label="ابزارها" icon="Wrench" items={[{ label: 'گزارش فعالیت', icon: 'ScrollText', onClick: () => setAuditFor({ id: '' }) }, { label: 'اعتبارسنجی', icon: 'CheckCircle2', onClick: () => setShowValidationsManager(true) }, { label: 'فونت‌ها', icon: 'Type', onClick: () => setShowFontsManager(true) }, { label: t('base_lists'), icon: 'Database', onClick: () => setShowPresetsManager(true) }]} /><ThemeToggle t={t} /><button onClick={() => setShowSales(true)} className="relative flex items-center gap-2 text-white btn-grad px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="Store" className="w-4 h-4" /> فروش{(salesCounts.newLeads + salesCounts.paidOrders) > 0 && <span className="absolute -top-2 -start-2 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-bold inline-flex items-center justify-center" title={`${salesCounts.paidOrders} سفارش و ${salesCounts.newLeads} درخواست جدید`}>{toPersianNum(salesCounts.newLeads + salesCounts.paidOrders)}</span>}</button><button onClick={() => setShowPlatformSettings(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="Settings" className="w-4 h-4" /> تنظیمات پلتفرم</button><button onClick={onLogout} className="flex items-center gap-2 text-slate-600 hover:text-red-500 bg-slate-50 hover:bg-red-50 px-4 py-2 rounded-xl font-bold border"><Icon name="LogOut" className="w-4 h-4" /> {t('logout')}</button></div></header>
+            <header className="relative z-30 flex flex-col lg:flex-row justify-between items-center mb-6 glass p-4 rounded-2xl gap-4"><div className="flex items-center gap-4"><LogoImg alt="" className="w-12 h-12 object-contain" /><div><h1 className="text-xl font-bold text-slate-800 lg:whitespace-nowrap">{plat.name}</h1><p className="text-sm text-slate-500">{t('manage_platforms')}</p><p className="text-xs text-slate-500 mt-1 flex items-center gap-3"><span className="flex items-center gap-1"><Icon name="Building2" className="w-3.5 h-3.5" />{validTenants.length} سازمان</span><span className="flex items-center gap-1"><Icon name="CreditCard" className="w-3.5 h-3.5" />{totalCards} کارت</span></p></div></div><div className="flex items-center gap-2 flex-wrap justify-end"><OverflowMenu label="ابزارها" icon="Wrench" items={[{ label: 'گزارش فعالیت', icon: 'ScrollText', onClick: () => setAuditFor({ id: '' }) }, { label: 'اعتبارسنجی', icon: 'CheckCircle2', onClick: () => setShowValidationsManager(true) }, { label: 'گروه‌ها (خانواده)', icon: 'Layers', onClick: () => setShowGroups(true) }, { label: 'فونت‌ها', icon: 'Type', onClick: () => setShowFontsManager(true) }, { label: t('base_lists'), icon: 'Database', onClick: () => setShowPresetsManager(true) }]} /><ThemeToggle t={t} /><button onClick={() => setShowSales(true)} className="relative flex items-center gap-2 text-white btn-grad px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="Store" className="w-4 h-4" /> فروش{(salesCounts.newLeads + salesCounts.paidOrders) > 0 && <span className="absolute -top-2 -start-2 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-bold inline-flex items-center justify-center" title={`${salesCounts.paidOrders} سفارش و ${salesCounts.newLeads} درخواست جدید`}>{toPersianNum(salesCounts.newLeads + salesCounts.paidOrders)}</span>}</button><button onClick={() => setShowPlatformSettings(true)} className="flex items-center gap-2 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold shadow-sm"><Icon name="Settings" className="w-4 h-4" /> تنظیمات پلتفرم</button><button onClick={onLogout} className="flex items-center gap-2 text-slate-600 hover:text-red-500 bg-slate-50 hover:bg-red-50 px-4 py-2 rounded-xl font-bold border"><Icon name="LogOut" className="w-4 h-4" /> {t('logout')}</button></div></header>
             <div className="flex flex-col sm:flex-row gap-3 mb-6"><div className="relative flex-1"><Icon name="Search" className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" /><input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="جستجوی سازمان (نام یا شناسه)..." aria-label="جستجوی سازمان" className="w-full pr-10 pl-4 py-2.5 border border-white rounded-xl bg-white/70" /></div><select value={statusF} onChange={e => setStatusF(e.target.value)} aria-label="فیلتر وضعیت" className="border border-white rounded-xl px-3 py-2.5 bg-white/70 text-sm"><option value="">همه‌ی وضعیت‌ها</option><option value="فعال">فعال</option><option value="غیرفعال">غیرفعال</option><option value="پایان مهلت">پایان مهلت</option></select><select value={sortBy} onChange={e => setSortBy(e.target.value)} aria-label="مرتب‌سازی" className="border border-white rounded-xl px-3 py-2.5 bg-white/70 text-sm"><option value="created">جدیدترین</option><option value="name">نام</option><option value="cards">بیشترین کارت</option><option value="activity">آخرین فعالیت</option></select></div>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 flex-1">
                 <button type="button" onClick={onNewWizard} className="glass-soft border-2 border-dashed border-indigo-300 rounded-3xl p-8 flex flex-col items-center justify-center text-indigo-700 hover:bg-white/60 transition-colors cursor-pointer min-h-[220px]"><Icon name="Plus" className="w-12 h-12 mb-3" /><span className="font-bold text-lg">{t('new_org')}</span><span className="text-sm opacity-80 text-center mt-2">{t('new_org_desc')}</span></button>
@@ -3091,7 +3183,7 @@ const focusField = (id) => {
     if (input) setTimeout(() => input.focus({ preventScroll: true }), 350);
 };
 
-function TenantForm({ tenant, t, lang, langControl, globalValidations, onLogout }) {
+function TenantForm({ tenant, t, lang, langControl, globalValidations, onLogout, backMode = false }) {
     const [formData, setFormData] = useState({}); const [requesterName, setRequesterName] = useState(''); const [isIssued, setIsIssued] = useState(false); const [isSubmitting, setIsSubmitting] = useState(false); const [inputWarnings, setInputWarnings] = useState({}); const [customSelects, setCustomSelects] = useState({}); const [issuedCardId, setIssuedCardId] = useState(null);
     const [showMissing, setShowMissing] = useState(false); const [showMyCards, setShowMyCards] = useState(false); const [myCount, setMyCount] = useState(() => readMyCards(tenant.id).length);
     const draftKey = `tenant_${tenant.id}_draft`;
@@ -3138,7 +3230,7 @@ function TenantForm({ tenant, t, lang, langControl, globalValidations, onLogout 
         <div className="min-h-screen flex flex-col md:flex-row">
             {cropModal(t)}{myCardsModal}
             <div className="md:w-1/3 glass border-l border-white/60 p-4 pt-14 md:p-8 flex flex-col items-center text-center z-10 relative">
-                <div className={`absolute top-4 ${isRtl ? 'right-4' : 'left-4'} flex items-center gap-3 text-slate-500`}><button onClick={onLogout} aria-label={t('logout')} title={t('logout')} className="w-9 h-9 inline-flex items-center justify-center rounded-lg hover:bg-red-50 hover:text-red-500"><Icon name="LogOut" className="w-5 h-5" /></button><ThemeToggle t={t} compact /><LanguageSwitcher control={langControl} /></div>
+                <div className={`absolute top-4 ${isRtl ? 'right-4' : 'left-4'} flex items-center gap-3 text-slate-500`}><button onClick={onLogout} aria-label={backMode ? 'بازگشت به انتخاب' : t('logout')} title={backMode ? 'بازگشت به انتخاب' : t('logout')} className={`w-9 h-9 inline-flex items-center justify-center rounded-lg ${backMode ? 'hover:bg-indigo-50 hover:text-indigo-600' : 'hover:bg-red-50 hover:text-red-500'}`}><Icon name={backMode ? 'ArrowRight' : 'LogOut'} className="w-5 h-5" /></button><ThemeToggle t={t} compact /><LanguageSwitcher control={langControl} /></div>
                 <div className="flex-1 flex flex-col items-center justify-center w-full md:mt-10"><LogoImg src={tenant.logoUrl} srcDark={tenant.logoUrlDark} alt="" fallbackText={tenantText(tenant, 'orgName', t.lang)} className="w-20 h-20 md:w-32 md:h-32 object-contain mb-3 md:mb-6" /><h1 className="text-3xl font-bold text-slate-800 mb-4">{tenantText(tenant, 'orgName', t.lang)}</h1><p className="text-slate-500 leading-relaxed">{tenantText(tenant, 'welcomeText', t.lang)}</p></div>
                 <div className="mt-auto pt-4 md:pt-8 border-t border-slate-100 w-full"><BrandingFooter /></div>
             </div>
@@ -3408,6 +3500,7 @@ function CardPlatform() {
                     try { const saved = localStorage.getItem(`ui_lang_${orgId}`); if (saved) setUserLang(saved); } catch (e) { }
                     setPublicTenant(pub); setSystemMode('TENANT_PORTAL');
                     const role = boot.tenants && boot.tenants[orgId];
+                    if (pub.isGroup) { if (boot.groupMembers) { setGroupMembers(boot.groupMembers); setAppState('GROUP_HOME'); } else setAppState('LANDING'); return; }
                     if (role && boot.tenant) { setCurrentTenant(boot.tenant); setAppState(role === 'ADMIN' ? 'TENANT_DASHBOARD' : 'TENANT_FORM'); }
                     else setAppState('LANDING');
                 } else {
@@ -3422,6 +3515,10 @@ function CardPlatform() {
     }, []);
 
     const deleteTenant = async (id) => { try { await apiPost('delete_tenant', { id }); setTenants(prev => prev.filter(tn => tn.id !== id)); notifySuccess('سازمان حذف شد.'); } catch (e) { notifyError(e); } };
+    const [groupMembers, setGroupMembers] = useState([]); const [groupBusy, setGroupBusy] = useState('');
+    const isGroup = !!(publicTenant && publicTenant.isGroup);
+    const pickMember = async (m) => { setGroupBusy(m.id); try { const tn = await apiGet('get_tenant', { id: m.id }); setCurrentTenant(tn); setAppState('TENANT_FORM'); } catch (e) { notifyError(e); } setGroupBusy(''); };
+    const groupLogout = async () => { try { await apiPost('logout', { groupId: publicTenant.id }); } catch (e) { } setCurrentTenant(null); setGroupMembers([]); setAppState('LANDING'); };
     const logout = async (tenantId) => { try { await apiPost('logout', tenantId ? { tenantId } : {}); } catch (e) { } setCurrentTenant(null); setAppState('LANDING'); };
 
     // زبان: پنل سوپرادمین فارسی است؛ کاربر سازمان (در صورت اجازه) می‌تواند زبان را خودش انتخاب کند
@@ -3449,7 +3546,7 @@ function CardPlatform() {
     }, [platform.faviconUrl]);
     // خروج خودکار پس از بی‌کاری: فعالیت در هر تب (از طریق localStorage) شمرده می‌شود و سرور با ping در جریان می‌ماند.
     // سرور هم همین قانون را مستقل اجرا می‌کند؛ اینجا فقط برای هشدار به‌موقع و برگشت تمیز به صفحه ورود است.
-    const loggedIn = ['SUPER_ADMIN', 'WIZARD', 'TENANT_FORM', 'TENANT_DASHBOARD'].includes(appState);
+    const loggedIn = ['SUPER_ADMIN', 'WIZARD', 'TENANT_FORM', 'TENANT_DASHBOARD', 'GROUP_HOME'].includes(appState);
     const idleTenantId = systemMode === 'TENANT_PORTAL' && currentTenant ? currentTenant.id : '';
     useEffect(() => {
         const idleMs = (Number(platform.idleMinutes) || 0) * 60000;
@@ -3468,7 +3565,7 @@ function CardPlatform() {
         events.forEach(ev => window.addEventListener(ev, mark, { passive: true, capture: true }));
         const timer = setInterval(() => {
             const left = idleMs - (Date.now() - lastActivity());
-            if (left <= 0) { clearInterval(timer); logout(idleTenantId || undefined); notify(t('idle_logout'), 'warning'); }
+            if (left <= 0) { clearInterval(timer); if (isGroup) groupLogout(); else logout(idleTenantId || undefined); notify(t('idle_logout'), 'warning'); }
             else if (left <= 60000 && !st.warned) { st.warned = true; notify(t('idle_warning'), 'warning'); }
         }, 10000);
         return () => { clearInterval(timer); events.forEach(ev => window.removeEventListener(ev, mark, { capture: true })); };
@@ -3485,11 +3582,12 @@ function CardPlatform() {
 
     return (
         <><LiquidBackground /><div className={`mo-kids min-h-screen text-slate-800 flex flex-col relative z-10 ${!isRtl ? 'text-left' : ''}`}>
-            {appState === 'LANDING' && <SystemEntry mode={systemMode} tenant={publicTenant} t={t} langControl={systemMode === 'TENANT_PORTAL' ? langControl : null} onSuperAdmin={async () => { await refreshTenants(); setAppState('SUPER_ADMIN'); }} onTenantLogin={(role, tenant) => { setCurrentTenant(tenant); setAppState(role === 'ADMIN' ? 'TENANT_DASHBOARD' : 'TENANT_FORM'); }} />}
+            {appState === 'LANDING' && <SystemEntry mode={systemMode} tenant={publicTenant} t={t} langControl={systemMode === 'TENANT_PORTAL' ? langControl : null} onSuperAdmin={async () => { await refreshTenants(); setAppState('SUPER_ADMIN'); }} onTenantLogin={(role, tenant) => { setCurrentTenant(tenant); setAppState(role === 'ADMIN' ? 'TENANT_DASHBOARD' : 'TENANT_FORM'); }} onGroupLogin={(members) => { setGroupMembers(members); setAppState('GROUP_HOME'); }} />}
+            {appState === 'GROUP_HOME' && isGroup && <GroupHome group={publicTenant} members={groupMembers} t={t} langControl={null} busyId={groupBusy} onPick={pickMember} onLogout={groupLogout} />}
             {appState === 'SUPER_ADMIN' && <SuperAdminPanel tenants={tenants} t={t} fetchGlobalFonts={fetchGlobalFonts} fetchGlobalValidations={fetchGlobalValidations} onNewWizard={() => { setEditingTenant(null); setAppState('WIZARD'); }} onEditWizard={(tn) => { setEditingTenant(tn); setAppState('WIZARD'); }} onDuplicateWizard={(dup) => { setEditingTenant(dup); setAppState('WIZARD'); }} onDeleteWizard={deleteTenant} onRefresh={refreshTenants} publishedId={publishedId} onPublishedSeen={() => setPublishedId(null)} onLogout={() => logout()} />}
             {appState === 'WIZARD' && <SuperAdminWizard initialData={editingTenant} globalFonts={globalFonts} fetchGlobalFonts={fetchGlobalFonts} globalValidations={globalValidations} t={t} dicts={dicts} onComplete={(id) => { refreshTenants(); setAppState('SUPER_ADMIN'); setEditingTenant(null); setPublishedId(id); }} onCancel={() => { refreshTenants(); setAppState('SUPER_ADMIN'); setEditingTenant(null); }} />}
             {appState === 'TENANT_DASHBOARD' && currentTenant && <TenantDashboard tenant={currentTenant} t={t} lang={tLang} langControl={langControl} globalValidations={globalValidations} onLogout={() => logout(currentTenant.id)} />}
-            {appState === 'TENANT_FORM' && currentTenant && <TenantForm tenant={currentTenant} t={t} lang={tLang} langControl={langControl} globalValidations={globalValidations} onLogout={() => logout(currentTenant.id)} />}
+            {appState === 'TENANT_FORM' && currentTenant && <TenantForm tenant={currentTenant} t={t} lang={tLang} langControl={langControl} globalValidations={globalValidations} backMode={isGroup} onLogout={() => isGroup ? (setCurrentTenant(null), setAppState('GROUP_HOME')) : logout(currentTenant.id)} />}
         </div></>
     );
 }
