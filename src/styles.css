@@ -92,7 +92,7 @@ body { background: transparent; }
 /* سطوح شیشه‌ای */
 .glass, .glass-strong, .glass-soft, .glass-dark { -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%); }
 .glass { background: rgba(255, 255, 255, 0.58); border: 1px solid rgba(255, 255, 255, 0.65); box-shadow: 0 8px 32px rgba(76, 29, 149, 0.10); }
-.glass-strong { background: rgba(255, 255, 255, 0.82); border: 1px solid rgba(255, 255, 255, 0.8); box-shadow: 0 16px 48px rgba(76, 29, 149, 0.18); }
+.glass-strong { background: rgba(255, 255, 255, 0.94); border: 1px solid rgba(255, 255, 255, 0.8); box-shadow: 0 16px 48px rgba(76, 29, 149, 0.18); }
 .glass-soft { background: rgba(255, 255, 255, 0.32); border: 1px solid rgba(255, 255, 255, 0.45); }
 .glass-dark { background: rgba(30, 27, 75, 0.55); border: 1px solid rgba(255, 255, 255, 0.18); }
 /* مرورگرهای بدون backdrop-filter: سطح مات‌تر برای خوانایی */
@@ -238,7 +238,7 @@ html.dark .hover\:border-slate-800:hover { border-color: #e2e8f0 !important; }
 html.dark .liquid-bg { background: linear-gradient(135deg, color-mix(in srgb, var(--g1) 16%, #0b1020), color-mix(in srgb, var(--g2) 16%, #0b1020) 50%, color-mix(in srgb, var(--g3) 16%, #0b1020)); }
 html.dark .liquid-bg .blob { opacity: .3; } html.dark .liquid-bg .b4 { opacity: .22; } html.dark .liquid-bg .b5 { opacity: .16; }
 html.dark .glass { background: rgba(15, 23, 42, .55); border-color: rgba(255, 255, 255, .08); box-shadow: 0 8px 32px rgba(0, 0, 0, .35); }
-html.dark .glass-strong { background: rgba(17, 24, 39, .84); border-color: rgba(255, 255, 255, .1); box-shadow: 0 16px 48px rgba(0, 0, 0, .45); }
+html.dark .glass-strong { background: rgba(17, 24, 39, .95); border-color: rgba(255, 255, 255, .1); box-shadow: 0 16px 48px rgba(0, 0, 0, .45); }
 html.dark .glass-soft { background: rgba(15, 23, 42, .35); border-color: rgba(255, 255, 255, .08); }
 html.dark .view-toggle button[aria-checked="true"], html.dark .view-toggle button[aria-selected="true"] { background: #334155; color: #c7d2fe; box-shadow: 0 1px 3px rgba(0, 0, 0, .4); }
 html.dark .viz-tip { background: rgba(30, 41, 59, .97); border-color: rgba(148, 163, 184, .25); box-shadow: 0 6px 20px rgba(0, 0, 0, .4); }
@@ -321,11 +321,15 @@ html:not(.dark) .text-slate-500 { color: #475569; }
 @keyframes mo-pop-in { from { opacity: 0; transform: translateY(10px) scale(.975); } to { opacity: 1; transform: none; } }
 @keyframes mo-slide-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 /* ورود پنجره‌های مدال و پاپ‌آپ‌ها */
-.fixed.inset-0:not(.liquid-bg) { animation: mo-fade-in .2s ease-out; }
+.fixed.inset-0:not(.liquid-bg) { animation: mo-overlay-in .2s ease-out; }
+/* لایه‌ی پشت پنجره: فقط زمینه و بلور محو می‌شود، نه کل لایه (وگرنه کارت شفاف می‌شود و پشتش مات نیست) */
+@keyframes mo-overlay-in { from { background-color: transparent; -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0); } }
+@keyframes mo-overlay-out { to { background-color: transparent; -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0); } }
 [role="dialog"], [role="alertdialog"] { animation: mo-pop-in .24s cubic-bezier(.2, .8, .3, 1); }
 [role="menu"], [role="listbox"] { animation: mo-pop-in .16s ease-out; transform-origin: top; }
 .mo-ghost, .mo-ghost.fixed { animation: mo-fade-out .2s ease-in forwards !important; pointer-events: none !important; }
-.mo-ghost [role="dialog"], .mo-ghost [role="alertdialog"] { animation: none !important; }
+.mo-ghost.fixed.inset-0 { animation: mo-overlay-out .2s ease-in forwards !important; }
+.mo-ghost.fixed.inset-0 > * { animation: mo-fade-out .2s ease-in forwards !important; }
 /* تعویض محتوای صفحه/تب/مرحله: عنصر تازه با فید و کمی لغزش بالا می‌آید */
 .mo-kids > * { animation: mo-slide-in .26s ease-out; }
 details[open] > :not(summary) { animation: mo-slide-in .22s ease-out; }

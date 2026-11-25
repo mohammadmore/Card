@@ -55,7 +55,7 @@ function DialogView({ dialog, onDone }) {
     };
     const titleId = `dlg-title-${dialog.id}`; const msgId = `dlg-msg-${dialog.id}`;
     return (
-        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onKeyDown={onKeyDown} onMouseDown={(e) => { if (e.target === e.currentTarget) close(false); }}>
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4" onKeyDown={onKeyDown} onMouseDown={(e) => { if (e.target === e.currentTarget) close(false); }}>
             <div ref={boxRef} role="alertdialog" aria-modal="true" aria-labelledby={dialog.title ? titleId : undefined} aria-describedby={msgId} className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 text-right">
                 {dialog.title && <h2 id={titleId} className="font-bold text-lg text-slate-800 mb-2">{dialog.title}</h2>}
                 <p id={msgId} className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{dialog.message}</p>
