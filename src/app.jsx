@@ -123,17 +123,17 @@ const FONT_WEIGHTS = [[100, 'نازک'], [200, 'خیلی سبک'], [300, 'سبک
 const normWeight = (w) => { if (w === 'normal') return 400; if (w === 'bold' || w == null || w === '') return 700; const n = parseInt(w, 10); return n >= 100 && n <= 900 ? Math.round(n / 100) * 100 : 700; };
 /** وزن‌های موجود یک خانواده‌ی فونت: کتابخانه‌ی مرکزی (هر فایل یک وزن)، Vazirmatn (متغیر: همه)، یا فونت سیستم (معمولی/ضخیم). */
 const familyWeights = (family) => {
-    const reg = [...new Set(globalFontRegistry.filter(f => f.font_name === family).map(f => Number(f.font_weight) || 400))].sort((a, b) => a - b);
+    const reg = [...new Set(globalFontRegistry.filter(f => f.font_name === family && f.font_style !== 'italic').map(f => Number(f.font_weight) || 400))].sort((a, b) => a - b);
     if (reg.length > 1) return reg;
     if (family === 'Vazirmatn') return [100, 200, 300, 400, 500, 600, 700, 800, 900];
     return [400, 700];
 };
 const nearestWeight = (w, list) => list.reduce((best, x) => (Math.abs(x - w) < Math.abs(best - w) ? x : best), list[0]);
-const loadFontFace = (name, url, weight = 400) => {
+const loadFontFace = (name, url, weight = 400, style = 'normal') => {
     if (!name || !url) return Promise.resolve(false);
-    const key = `${name}|${weight}`;
+    const key = `${name}|${weight}|${style}`;
     if (!fontLoadCache[key]) {
-        fontLoadCache[key] = new FontFace(name, cssUrl(url), { weight: String(weight) }).load()
+        fontLoadCache[key] = new FontFace(name, cssUrl(url), { weight: String(weight), style }).load()
             .then(face => { document.fonts.add(face); return true; })
             .catch(() => { delete fontLoadCache[key]; return false; });
     }
@@ -142,24 +142,24 @@ const loadFontFace = (name, url, weight = 400) => {
 // فونت‌های کتابخانه فقط معرفی می‌شوند و تا وقتی متنی با آن‌ها نمایش داده نشود دانلود نمی‌شوند
 // (پیش‌تر همه‌ی فایل‌های فونت هنگام باز شدن صفحه دانلود می‌شد). رسم کارت با ensureFonts فونت لازم را کامل بارگذاری می‌کند.
 const registeredFonts = new Set();
-const registerFontFace = (name, url, weight = 400) => {
-    const key = `${name}|${weight}`;
+const registerFontFace = (name, url, weight = 400, style = 'normal') => {
+    const key = `${name}|${weight}|${style}`;
     if (!name || !url || registeredFonts.has(key) || fontLoadCache[key]) return;
-    try { document.fonts.add(new FontFace(name, cssUrl(url), { weight: String(weight) })); registeredFonts.add(key); } catch (e) { }
+    try { document.fonts.add(new FontFace(name, cssUrl(url), { weight: String(weight), style })); registeredFonts.add(key); } catch (e) { }
 };
-const injectGlobalFonts = (fonts) => (fonts || []).forEach(f => registerFontFace(f.font_name, f.font_url, Number(f.font_weight) || 400));
+const injectGlobalFonts = (fonts) => (fonts || []).forEach(f => registerFontFace(f.font_name, f.font_url, Number(f.font_weight) || 400, f.font_style === 'italic' ? 'italic' : 'normal'));
 const collectFontFamilies = (config) => [...new Set((config.fields || []).filter(f => f.printOnCard && ['text', 'select', 'date', 'photo'].includes(f.type)).map(f => f.fontFamily || 'Vazirmatn'))];
 /** مطمئن می‌شود همه‌ی فونت‌های مورد نیاز کارت واقعاً لود شده‌اند (با چند بار تلاش). خروجی: موفق بودن همه. */
 const ensureFonts = async (families, legacyCustomFonts = [], retries = 3) => {
     let allOk = true;
     for (const fam of families) {
         if (DEFAULT_FONTS.includes(fam) && fam !== 'Vazirmatn') continue;
-        const srcs = globalFontRegistry.filter(f => f.font_name === fam).map(f => ({ ...f, w: Number(f.font_weight) || 400 }));
+        const srcs = globalFontRegistry.filter(f => f.font_name === fam).map(f => ({ ...f, w: Number(f.font_weight) || 400, st: f.font_style === 'italic' ? 'italic' : 'normal' }));
         if (!srcs.length) (legacyCustomFonts || []).filter(f => f.name === fam).forEach(f => srcs.push({ font_name: f.name, font_url: f.url, w: 400 }));
         let ok = false;
         for (let i = 0; i < retries && !ok; i++) {
             try {
-                for (const src of srcs) await loadFontFace(src.font_name, src.font_url, src.w); // همه‌ی وزن‌های این خانواده
+                for (const src of srcs) await loadFontFace(src.font_name, src.font_url, src.w, src.st); // همه‌ی وزن‌های این خانواده
                 const faces = await document.fonts.load(`bold 40px "${fam}"`);
                 ok = faces.length > 0;
             } catch (e) { ok = false; }
@@ -448,12 +448,13 @@ const localizeFields = (fields, lang) => (fields || []).map(f => {
 });
 
 // --- رسم روی canvas ---
-const shapePath = (ctx, shape, x, y, w, h) => {
+const shapePath = (ctx, shape, x, y, w, h, rad) => {
     if (shape === 'CIRCLE' || shape === 'OVAL') ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, 2 * Math.PI);
     else if (shape === 'ROUNDED') {
         // polyfill برای مرورگرهای بدون ctx.roundRect (مثل Safari قدیمی)
-        if (ctx.roundRect) ctx.roundRect(x, y, w, h, 15);
-        else { const r = Math.min(15, w / 2, h / 2); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+        const rr = Math.max(0, Number(rad ?? 15) || 0);
+        if (ctx.roundRect) ctx.roundRect(x, y, w, h, Math.min(rr, w / 2, h / 2));
+        else { const r = Math.min(rr, w / 2, h / 2); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
     }
     else ctx.rect(x, y, w, h);
 };
@@ -587,7 +588,7 @@ const renderCardSide = async ({ config, userData, side, bgUrl, baseBgUrl, showAc
             continue;
         }
         if (field.type === 'photo') {
-            if (val === '[DELETED_48H]') { ctx.save(); ctx.beginPath(); shapePath(ctx, field.shape, field.x, field.y, field.w, field.h); ctx.fillStyle = '#f1f5f9'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#cbd5e1'; ctx.stroke(); ctx.clip(); ctx.fillStyle = '#64748b'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; const fSize = Math.max(10, Math.min(field.w, field.h) / 5); ctx.font = `bold ${fSize}px '${field.fontFamily || 'Vazirmatn'}', sans-serif`; ctx.fillText('EXPIRED', field.x + field.w / 2, field.y + field.h / 2); ctx.restore(); }
+            if (val === '[DELETED_48H]') { ctx.save(); ctx.beginPath(); shapePath(ctx, field.shape, field.x, field.y, field.w, field.h, field.radius); ctx.fillStyle = '#f1f5f9'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#cbd5e1'; ctx.stroke(); ctx.clip(); ctx.fillStyle = '#64748b'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; const fSize = Math.max(10, Math.min(field.w, field.h) / 5); ctx.font = `bold ${fSize}px '${field.fontFamily || 'Vazirmatn'}', sans-serif`; ctx.fillText('EXPIRED', field.x + field.w / 2, field.y + field.h / 2); ctx.restore(); }
             else if (val && val.startsWith('data:image')) {
                 try {
                     const userImg = await loadImage(val);
@@ -595,7 +596,7 @@ const renderCardSide = async ({ config, userData, side, bgUrl, baseBgUrl, showAc
                     const sdx = Number(field.shadowDx) || 0, sdy = field.shadowDy == null ? 4 : Number(field.shadowDy) || 0, sbl = field.shadowBlur == null ? 8 : Number(field.shadowBlur) || 0;
                     const pad = field.hasShadow ? Math.ceil(sbl * 2 + Math.abs(sdx) + Math.abs(sdy) + 4) : 0;
                     const tc = document.createElement('canvas'); tc.width = Math.ceil(field.w + pad * 2); tc.height = Math.ceil(field.h + pad * 2); const t = tc.getContext('2d');
-                    t.translate(pad - field.x, pad - field.y); t.beginPath(); shapePath(t, field.shape, field.x, field.y, field.w, field.h); t.clip();
+                    t.translate(pad - field.x, pad - field.y); t.beginPath(); shapePath(t, field.shape, field.x, field.y, field.w, field.h, field.radius); t.clip();
                     const uImgRatio = userImg.width / userImg.height; const fieldRatio = field.w / field.h; let uSrcX = 0, uSrcY = 0, uSrcW = userImg.width, uSrcH = userImg.height;
                     if (uImgRatio > fieldRatio) { uSrcW = userImg.height * fieldRatio; uSrcX = (userImg.width - uSrcW) / 2; } else { uSrcH = userImg.width / fieldRatio; uSrcY = (userImg.height - uSrcH) / 2; }
                     drawImageHQ(t, userImg, uSrcX, uSrcY, uSrcW, uSrcH, field.x, field.y, field.w, field.h);
@@ -604,12 +605,12 @@ const renderCardSide = async ({ config, userData, side, bgUrl, baseBgUrl, showAc
                         const sw = Number(field.strokeWidth) || 2; const pos = field.strokePos || 'center';
                         if (pos === 'outside') { // حاشیه‌ی بیرونی: حاشیه‌ی دو برابر روی بوم موقت، سپس داخل شکل پاک می‌شود
                             const sp = Math.ceil(sw * 2 + 4); const oc = document.createElement('canvas'); oc.width = Math.ceil(field.w + sp * 2); oc.height = Math.ceil(field.h + sp * 2); const o = oc.getContext('2d');
-                            o.translate(sp - field.x, sp - field.y); o.strokeStyle = field.strokeColor || '#ffffff'; o.lineJoin = 'round'; o.lineWidth = sw * 2; o.beginPath(); shapePath(o, field.shape, field.x, field.y, field.w, field.h); o.stroke();
-                            o.globalCompositeOperation = 'destination-out'; o.beginPath(); shapePath(o, field.shape, field.x, field.y, field.w, field.h); o.fill(); ctx.drawImage(oc, field.x - sp, field.y - sp);
+                            o.translate(sp - field.x, sp - field.y); o.strokeStyle = field.strokeColor || '#ffffff'; o.lineJoin = 'round'; o.lineWidth = sw * 2; o.beginPath(); shapePath(o, field.shape, field.x, field.y, field.w, field.h, field.radius); o.stroke();
+                            o.globalCompositeOperation = 'destination-out'; o.beginPath(); shapePath(o, field.shape, field.x, field.y, field.w, field.h, field.radius); o.fill(); ctx.drawImage(oc, field.x - sp, field.y - sp);
                         } else {
                             ctx.save(); ctx.strokeStyle = field.strokeColor || '#ffffff'; ctx.lineJoin = 'round';
-                            if (pos === 'center') ctx.lineWidth = sw; else { ctx.lineWidth = sw * 2; ctx.beginPath(); shapePath(ctx, field.shape, field.x, field.y, field.w, field.h); ctx.clip(); }
-                            ctx.beginPath(); shapePath(ctx, field.shape, field.x, field.y, field.w, field.h); ctx.stroke(); ctx.restore();
+                            if (pos === 'center') ctx.lineWidth = sw; else { ctx.lineWidth = sw * 2; ctx.beginPath(); shapePath(ctx, field.shape, field.x, field.y, field.w, field.h, field.radius); ctx.clip(); }
+                            ctx.beginPath(); shapePath(ctx, field.shape, field.x, field.y, field.w, field.h, field.radius); ctx.stroke(); ctx.restore();
                         }
                     }
                 } catch (e) { }
@@ -625,7 +626,7 @@ const renderCardSide = async ({ config, userData, side, bgUrl, baseBgUrl, showAc
             ctx.direction = isRTLField ? 'rtl' : 'ltr';
             const mark = (str) => (isRTLField ? '\u202B' : '\u202A') + str + '\u202C';
             const fam = field.fontFamily || 'Vazirmatn'; const weight = normWeight(field.fontWeight);
-            const setFont = (fs) => { ctx.font = `${weight} ${fs}px '${fam}', sans-serif`; };
+            const setFont = (fs) => { ctx.font = `${field.fontItalic ? 'italic ' : ''}${weight} ${fs}px '${fam}', sans-serif`; };
             if ('letterSpacing' in ctx) ctx.letterSpacing = `${Number(field.letterSpacing) || 0}px`;
             ctx.textAlign = field.align || 'right'; ctx.textBaseline = 'middle';
             const widthOf = (str) => ctx.measureText(mark(str)).width;
@@ -726,7 +727,7 @@ class ErrorBoundary extends React.Component {
 // 3. SHARED VIEWS & MODALS
 // ==========================================
 // کادر برش با نسبت ابعاد همان فیلد عکس (aspect = عرض/ارتفاع) کار می‌کند، نه همیشه مربع.
-function ImageCropperModal({ src, shape, aspect = 1, targetW = 0, t, onConfirm, onCancel }) {
+function ImageCropperModal({ src, shape, radius, aspect = 1, targetW = 0, t, onConfirm, onCancel }) {
     useEscape(onCancel);
     const CANVAS_SIZE = 300; const HANDLE_SIZE = 20; const MIN_SIZE = 40;
     const DPR = Math.min(3, window.devicePixelRatio || 1); // پیش‌نمایش با تراکم واقعی صفحه رسم می‌شود تا روی گوشی تار نباشد
@@ -748,7 +749,7 @@ function ImageCropperModal({ src, shape, aspect = 1, targetW = 0, t, onConfirm, 
         }).catch(() => { notify('خطا در خواندن تصویر'); onCancel(); });
         return () => { alive = false; };
     }, [src, ratio]);
-    useEffect(() => { const canvas = canvasRef.current; if (!canvas || !imgObj) return; const ctx = canvas.getContext('2d'); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.imageSmoothingQuality = 'high'; ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE); ctx.drawImage(imgObj.preview, imgObj.drawX, imgObj.drawY, imgObj.drawW, imgObj.drawH); ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE); ctx.save(); ctx.beginPath(); shapePath(ctx, shape, cropBox.x, cropBox.y, cropBox.w, cropBox.h); ctx.clip(); ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE); ctx.drawImage(imgObj.preview, imgObj.drawX, imgObj.drawY, imgObj.drawW, imgObj.drawH); ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore(); ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.strokeRect(cropBox.x, cropBox.y, cropBox.w, cropBox.h); ctx.fillStyle = '#6366f1'; ctx.fillRect(cropBox.x + cropBox.w - HANDLE_SIZE / 2, cropBox.y + cropBox.h - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE); }, [imgObj, cropBox, shape]);
+    useEffect(() => { const canvas = canvasRef.current; if (!canvas || !imgObj) return; const ctx = canvas.getContext('2d'); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.imageSmoothingQuality = 'high'; ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE); ctx.drawImage(imgObj.preview, imgObj.drawX, imgObj.drawY, imgObj.drawW, imgObj.drawH); ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE); ctx.save(); ctx.beginPath(); shapePath(ctx, shape, cropBox.x, cropBox.y, cropBox.w, cropBox.h, radius); ctx.clip(); ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE); ctx.drawImage(imgObj.preview, imgObj.drawX, imgObj.drawY, imgObj.drawW, imgObj.drawH); ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore(); ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.strokeRect(cropBox.x, cropBox.y, cropBox.w, cropBox.h); ctx.fillStyle = '#6366f1'; ctx.fillRect(cropBox.x + cropBox.w - HANDLE_SIZE / 2, cropBox.y + cropBox.h - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE); }, [imgObj, cropBox, shape]);
     const getPointerPos = (e) => { const rect = canvasRef.current.getBoundingClientRect(); return { x: (e.clientX - rect.left) * CANVAS_SIZE / rect.width, y: (e.clientY - rect.top) * CANVAS_SIZE / rect.height }; };
     const onPointerDown = (e) => { e.currentTarget.setPointerCapture(e.pointerId); const { x, y } = getPointerPos(e); const handleX = cropBox.x + cropBox.w; const handleY = cropBox.y + cropBox.h; const mode = (Math.abs(x - handleX) <= HANDLE_SIZE && Math.abs(y - handleY) <= HANDLE_SIZE) ? 'resize' : 'move'; setDragState({ active: true, mode, startX: x, startY: y, startBox: { ...cropBox } }); };
     const onPointerMove = (e) => {
@@ -964,12 +965,12 @@ function SharedFieldsRenderer({ formData, setFormData, inputWarnings, setInputWa
 const usePhotoCrop = (setFormData) => {
     const [cropFile, setCropFile] = useState(null);
     const handlePhotoUpload = async (field, file, pureDataUrl = null) => {
-        const meta = { fieldId: field.id, shape: field.shape, aspect: field.w && field.h ? field.w / field.h : 1, targetW: field.w || 0 };
+        const meta = { fieldId: field.id, shape: field.shape, radius: field.radius, aspect: field.w && field.h ? field.w / field.h : 1, targetW: field.w || 0 };
         if (pureDataUrl) { setCropFile({ ...meta, src: pureDataUrl }); return; }
         if (!file) return;
         try { setCropFile({ ...meta, src: await readFileAsDataURL(file) }); } catch (e) { notify('خطا در خواندن فایل'); }
     };
-    const cropModal = (t) => cropFile && <ImageCropperModal src={cropFile.src} shape={cropFile.shape} aspect={cropFile.aspect} targetW={cropFile.targetW} t={t} onConfirm={(dataUrl) => { setFormData(p => ({ ...p, [cropFile.fieldId]: dataUrl })); setCropFile(null); }} onCancel={() => setCropFile(null)} />;
+    const cropModal = (t) => cropFile && <ImageCropperModal src={cropFile.src} shape={cropFile.shape} radius={cropFile.radius} aspect={cropFile.aspect} targetW={cropFile.targetW} t={t} onConfirm={(dataUrl) => { setFormData(p => ({ ...p, [cropFile.fieldId]: dataUrl })); setCropFile(null); }} onCancel={() => setCropFile(null)} />;
     return { handlePhotoUpload, cropModal };
 };
 
@@ -1352,7 +1353,7 @@ function VisualEditor({ side, bgUrl, defaultDim, fixed = false, bgFit = 'stretch
                 <div className="flex justify-center items-start min-w-fit">
                     <div ref={containerRef} data-canvas className="keep-light relative isolate shadow-2xl bg-white overflow-hidden select-none shrink-0 touch-none" style={{ width: zoom === 'fit' ? fitWidth : `${bgDim.w * zoom}px`, aspectRatio: `${bgDim.w} / ${bgDim.h}`, backgroundImage: cssUrl(bgUrl), backgroundSize: BG_FIT_CSS[fixed ? bgFit : 'stretch'] || '100% 100%', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' }} onPointerDown={(e) => { if (e.target === containerRef.current) setSelectedId(null); }}>
                         {sideFields.map((f, index) => (
-                            <div key={f.id} onPointerDown={(e) => startInteraction(e, f.id, 'move')} className={`absolute border-2 flex items-center justify-center overflow-visible transition-colors duration-75 ${f.locked ? 'cursor-pointer' : 'cursor-move'} ${f.printOnCard ? (f.type === 'stars' ? 'bg-amber-200/10' : 'bg-white/70') : 'bg-red-100/80 border-red-400 border-dashed'} ${selectedId === f.id ? 'border-indigo-500 bg-indigo-500/20 shadow-[0_0_0_4px_rgba(99,102,241,0.2)]' : 'border-dashed border-slate-500/50 hover:border-slate-800'} ${f.type === 'photo' && f.shape === 'CIRCLE' ? 'rounded-full' : ''} ${f.type === 'photo' && f.shape === 'ROUNDED' ? 'rounded-2xl' : ''} ${f.type === 'photo' && f.shape === 'OVAL' ? 'rounded-[50%]' : ''}`} style={{ left: pct(f.x, bgDim.w), top: pct(f.y, bgDim.h), width: pct(f.w, bgDim.w), height: pct(f.h, bgDim.h), zIndex: selectedId === f.id ? 1000 : index + 1 }} title={f.label}>
+                            <div key={f.id} onPointerDown={(e) => startInteraction(e, f.id, 'move')} className={`absolute border-2 flex items-center justify-center overflow-visible transition-colors duration-75 ${f.locked ? 'cursor-pointer' : 'cursor-move'} ${f.printOnCard ? (f.type === 'stars' ? 'bg-amber-200/10' : 'bg-white/70') : 'bg-red-100/80 border-red-400 border-dashed'} ${selectedId === f.id ? 'border-indigo-500 bg-indigo-500/20 shadow-[0_0_0_4px_rgba(99,102,241,0.2)]' : 'border-dashed border-slate-500/50 hover:border-slate-800'} ${f.type === 'photo' && f.shape === 'CIRCLE' ? 'rounded-full' : ''}  ${f.type === 'photo' && f.shape === 'OVAL' ? 'rounded-[50%]' : ''}`} style={{ left: pct(f.x, bgDim.w), top: pct(f.y, bgDim.h), width: pct(f.w, bgDim.w), height: pct(f.h, bgDim.h), zIndex: selectedId === f.id ? 1000 : index + 1, ...(f.type === 'photo' && f.shape === 'ROUNDED' ? { borderRadius: `${Math.min(50, (Number(f.radius ?? 15) || 0) / (f.w || 1) * 100)}% / ${Math.min(50, (Number(f.radius ?? 15) || 0) / (f.h || 1) * 100)}%` } : {}) }} title={f.label}>
                                 {!f.printOnCard && <Icon name="EyeOff" className="w-3 h-3 lg:w-5 lg:h-5 absolute top-0.5 right-0.5 text-red-500 opacity-50" />}
                                 {f.locked && <Icon name="Lock" className="w-2.5 h-2.5 lg:w-3.5 lg:h-3.5 absolute top-0.5 left-0.5 text-amber-700 opacity-80" />}
                                 {f.type === 'stars' ? <StarsBoxPreview field={f} /> : f.type === 'barcode' ? <div className="flex flex-col items-center opacity-70 w-full h-full justify-center pointer-events-none overflow-hidden"><span className="font-bold tracking-widest text-xs font-mono">||| |||| || |</span><span className="text-[10px] mt-1">{f.linkedFieldId ? 'متصل' : 'دستی'}</span></div> : f.type === 'qrcode' ? <div className="flex flex-col items-center opacity-70 w-full h-full justify-center pointer-events-none text-center overflow-hidden"><Icon name="QrCode" className="w-8 h-8 mb-1" /><span className="text-[10px] leading-tight">{f.qrSource === 'verify' ? 'استعلام اعتبار' : (f.linkedFieldId ? 'متصل ' + (f.qrTemplate ? '(لینک دار)' : '') : 'دستی')}</span></div> : <span className="font-bold opacity-70 px-0.5 rounded pointer-events-none text-center overflow-hidden leading-tight max-h-full" style={{ fontSize: `${Math.max(6, Math.min(14, f.h * viewScale * 0.42))}px` }}>{isComposite(f) ? (composeText(f, {}, { fields: data.fields || [] }, false) || f.label) : f.label}{f.required ? ' *' : ''} {f.printOnCard ? '' : '(مخفی)'}</span>}
@@ -1471,7 +1472,7 @@ function PropertiesSidebarPanel({ data, setData, selectedFieldId, onDelete, onSe
 
             {selectedField.type === 'stars' && <StarsProperties field={selectedField} update={updateSelectedMany} data={data} />}
 
-            {selectedField.type === 'photo' && (<div><label className="text-xs text-slate-500 block mb-1">قالب برش</label><select className="w-full border rounded-xl px-3 py-2 text-sm bg-white" value={selectedField.shape || 'ROUNDED'} onChange={e => updateSelected('shape', e.target.value)}>{Object.entries(SHAPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>)}
+            {selectedField.type === 'photo' && (<div><label className="text-xs text-slate-500 block mb-1">قالب برش</label><select className="w-full border rounded-xl px-3 py-2 text-sm bg-white" value={selectedField.shape || 'ROUNDED'} onChange={e => updateSelected('shape', e.target.value)}>{Object.entries(SHAPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>{(selectedField.shape || 'ROUNDED') === 'ROUNDED' && (<div className="mt-2"><label className="text-xs text-slate-500 flex justify-between mb-1"><span>میزان گردی گوشه‌ها</span><span dir="ltr">{selectedField.radius ?? 15}px</span></label><input type="range" aria-label="میزان گردی گوشه‌ها" min="0" max={Math.max(1, Math.round(Math.min(selectedField.w || 100, selectedField.h || 100) / 2))} value={selectedField.radius ?? 15} onChange={e => updateSelected('radius', Number(e.target.value))} className="w-full" /></div>)}</div>)}
             {selectedField.type === 'photo' && (
                 <div className="space-y-3 bg-slate-50 p-3 rounded-xl border">
                     <div>
@@ -1533,7 +1534,7 @@ function PropertiesSidebarPanel({ data, setData, selectedFieldId, onDelete, onSe
                     <div className="flex gap-4"><div className="flex-1"><label className="text-[10px] text-slate-500 block mb-1">نوع رنگ‌بندی</label><select className="w-full border rounded px-2 py-1 text-sm bg-white" value={selectedField.fillType || 'solid'} onChange={e => updateSelected('fillType', e.target.value)}><option value="solid">تک‌رنگ</option><option value="linear">گرادیانت خطی</option></select></div><div className="flex-1"><label className="text-[10px] text-slate-500 block mb-1">چیدمان</label><select className="w-full border rounded px-2 py-1 text-sm bg-white" value={selectedField.align || 'right'} onChange={e => updateSelected('align', e.target.value)}><option value="right">راست‌چین</option><option value="center">وسط‌چین</option><option value="left">چپ‌چین</option></select></div></div>
                     <div className="grid grid-cols-2 gap-2">
                         <div><label className="text-[10px] text-slate-500 block mb-1">تراز عمودی</label><select className="w-full border rounded px-2 py-1 text-sm bg-white" value={selectedField.vAlign || 'middle'} onChange={e => updateSelected('vAlign', e.target.value)}><option value="top">بالا</option><option value="middle">وسط</option><option value="bottom">پایین</option></select></div>
-                        <div><label className="text-[10px] text-slate-500 block mb-1">وزن فونت</label><FontWeightSelect family={selectedField.fontFamily || 'Vazirmatn'} value={selectedField.fontWeight} onChange={v => updateSelected('fontWeight', v)} className="w-full border rounded px-2 py-1 text-sm bg-white" /></div>
+                        <div><label className="text-[10px] text-slate-500 block mb-1">وزن فونت</label><FontWeightSelect family={selectedField.fontFamily || 'Vazirmatn'} value={selectedField.fontWeight} onChange={v => updateSelected('fontWeight', v)} className="w-full border rounded px-2 py-1 text-sm bg-white" /><label className="flex items-center gap-1.5 text-xs mt-1.5 cursor-pointer"><input type="checkbox" checked={!!selectedField.fontItalic} onChange={e => updateSelected('fontItalic', e.target.checked)} /> <span className="italic font-bold">ایتالیک</span></label></div>
                         <div><label className="text-[10px] text-slate-500 block mb-1">فاصله‌ی حروف (px)</label><input type="number" step="0.5" className="w-full border rounded px-2 py-1 text-sm bg-white text-center" value={selectedField.letterSpacing || 0} onChange={e => updateSelected('letterSpacing', Number(e.target.value))} dir="ltr" /></div>
                         {selectedField.type !== 'date' && <div className="flex items-end"><label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer pb-1"><input type="checkbox" checked={!!selectedField.multiline} onChange={e => updateSelected('multiline', e.target.checked)} className="accent-indigo-600" /> چندخطی (شکستن خودکار)</label></div>}
                         {selectedField.multiline && selectedField.type !== 'date' && <div><label className="text-[10px] text-slate-500 block mb-1">فاصله‌ی خطوط</label><input type="number" step="0.1" min="0.8" max="3" className="w-full border rounded px-2 py-1 text-sm bg-white text-center" value={selectedField.lineHeight || 1.3} onChange={e => updateSelected('lineHeight', Number(e.target.value))} dir="ltr" /></div>}
@@ -1881,7 +1882,7 @@ function FontWeightSelect({ family, value, onChange, className = '', label = 'و
     const list = familyWeights(family || 'Vazirmatn'); const cur = nearestWeight(normWeight(value), list);
     return <select aria-label={label} className={className} value={String(cur)} onChange={e => onChange(e.target.value)}>{list.map(w => <option key={w} value={w}>{(FONT_WEIGHTS.find(x => x[0] === w) || [0, ''])[1]} ({w})</option>)}</select>;
 }
-const newFontFamily = () => ({ name: '', rows: [{ id: null, key: '', weight: 400, url: '' }], removed: [] });
+const newFontFamily = () => ({ name: '', rows: [{ id: null, key: '', weight: 400, style: 'normal', url: '' }], removed: [] });
 /** مدیریت کتابخانه‌ی فونت: هر «خانواده» چند فایل با وزن‌های مختلف دارد (مثلاً معمولی ۴۰۰ و ضخیم ۷۰۰). startNew: مستقیم فرم خانواده‌ی جدید (از مرحله‌ی مدیریت فونت ویزارد). */
 function FontsManagerModal({ onClose, fetchGlobalFonts, startNew = false }) {
     const [fonts, setFonts] = useState([]); const [loading, setLoading] = useState(true); const [editing, setEditing] = useState(startNew ? newFontFamily() : null); const [busy, setBusy] = useState(false); const [upIdx, setUpIdx] = useState(-1);
@@ -1889,21 +1890,21 @@ function FontsManagerModal({ onClose, fetchGlobalFonts, startNew = false }) {
     useEffect(() => { fetchList(); }, []);
     const families = useMemo(() => { const m = new Map(); fonts.forEach(f => { if (!m.has(f.font_name)) m.set(f.font_name, []); m.get(f.font_name).push(f); }); return [...m.entries()].map(([name, rows]) => ({ name, rows: rows.sort((x, y) => x.font_weight - y.font_weight) })); }, [fonts]);
     const deleteFamily = async (fam) => { if (!(await askConfirm(`خانواده‌ی «${fam.name}» با همه‌ی وزن‌هایش (${fam.rows.length} فایل) حذف شود؟`, { danger: true, okText: 'حذف' }))) return; try { for (const r of fam.rows) await apiPost('delete_font', { id: r.id }); await fetchList(); fetchGlobalFonts(); } catch (e) { notifyError(e); } };
-    const startEdit = (fam) => setEditing({ name: fam.name, rows: fam.rows.map(r => ({ id: r.id, key: r.font_key, weight: r.font_weight, url: r.font_url })), removed: [] });
+    const startEdit = (fam) => setEditing({ name: fam.name, rows: fam.rows.map(r => ({ id: r.id, key: r.font_key, weight: r.font_weight, style: r.font_style === 'italic' ? 'italic' : 'normal', url: r.font_url })), removed: [] });
     const setRow = (i, patch) => setEditing(ed => ({ ...ed, rows: ed.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) }));
-    const addRow = () => setEditing(ed => { const used = new Set(ed.rows.map(r => r.weight)); const w = [400, 700, 300, 500, 600, 800, 900, 200, 100].find(x => !used.has(x)); return w ? { ...ed, rows: [...ed.rows, { id: null, key: '', weight: w, url: '' }] } : ed; });
+    const addRow = (style = 'normal') => setEditing(ed => { const used = new Set(ed.rows.filter(r => r.style === style).map(r => r.weight)); const w = [400, 700, 300, 500, 600, 800, 900, 200, 100].find(x => !used.has(x)); return w ? { ...ed, rows: [...ed.rows, { id: null, key: '', weight: w, style, url: '' }] } : ed; });
     const removeRow = (i) => setEditing(ed => ({ ...ed, rows: ed.rows.filter((_, j) => j !== i), removed: ed.rows[i].id ? [...ed.removed, ed.rows[i].id] : ed.removed }));
     const upload = async (i, e) => { const file = e.target.files[0]; e.target.value = ''; if (!file) return; if (file.size > 10 * 1024 * 1024) return notify('حجم فایل نباید بیشتر از 10 مگابایت باشد'); setUpIdx(i); try { const r = await apiPost('upload_font', { file: await readFileAsDataURL(file) }); setRow(i, { url: r.url }); } catch (err) { notifyError(err, 'خطا در آپلود'); } setUpIdx(-1); };
     const save = async () => {
         const name = editing.name.trim(); if (!name) return notify('نام خانواده‌ی فونت را وارد کنید.'); if (!/^[\p{L}\p{N} _-]+$/u.test(name)) return notify('نام فونت فقط می‌تواند حروف، عدد، فاصله، - و _ داشته باشد.');
         if (!editing.rows.length) return notify('حداقل یک وزن لازم است.'); if (editing.rows.some(r => !r.url)) return notify('برای هر وزن یک فایل فونت آپلود کنید.');
-        if (new Set(editing.rows.map(r => r.weight)).size !== editing.rows.length) return notify('هر وزن فقط یک بار می‌تواند تعریف شود.');
+        if (new Set(editing.rows.map(r => `${r.weight}|${r.style}`)).size !== editing.rows.length) return notify('هر وزن (عادی یا ایتالیک) فقط یک بار می‌تواند تعریف شود.');
         if (families.some(f => f.name === name && !editing.rows.some(r => f.rows.some(x => x.id === r.id)))) return notify('خانواده‌ای با این نام وجود دارد؛ آن را ویرایش کنید و وزن اضافه کنید.');
         setBusy(true);
         try {
             for (const id of editing.removed) await apiPost('delete_font', { id });
             const slug = (name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'font').slice(0, 36);
-            for (const r of editing.rows) await apiPost('save_font', { ...(r.id ? { id: r.id } : {}), font_key: r.key || `${slug}_${r.weight}_${Math.random().toString(36).slice(2, 6)}`, font_name: name, font_weight: r.weight, font_url: r.url });
+            for (const r of editing.rows) await apiPost('save_font', { ...(r.id ? { id: r.id } : {}), font_key: r.key || `${slug}_${r.weight}_${Math.random().toString(36).slice(2, 6)}`, font_name: name, font_weight: r.weight, font_style: r.style === 'italic' ? 'italic' : 'normal', font_url: r.url });
             await fetchList(); fetchGlobalFonts(); notifySuccess('فونت ذخیره شد.'); if (startNew) onClose(); else setEditing(null);
         } catch (e) { notifyError(e); }
         setBusy(false);
@@ -1917,12 +1918,13 @@ function FontsManagerModal({ onClose, fetchGlobalFonts, startNew = false }) {
                     <div className="space-y-2"><span className="text-xs font-bold block">وزن‌ها (برای هر وزن یک فایل)</span>
                         {editing.rows.map((r, i) => (
                             <div key={i} className="flex flex-wrap items-center gap-2 bg-white border rounded-xl p-2">
-                                <select aria-label={`وزن ردیف ${i + 1}`} value={r.weight} onChange={e => setRow(i, { weight: Number(e.target.value) })} className="border rounded-lg px-2 py-1.5 text-sm bg-white">{FONT_WEIGHTS.map(([w, l]) => <option key={w} value={w} disabled={editing.rows.some((x, j) => j !== i && x.weight === w)}>{l} ({w})</option>)}</select>
+                                <select aria-label={`وزن ردیف ${i + 1}`} value={r.weight} onChange={e => setRow(i, { weight: Number(e.target.value) })} className="border rounded-lg px-2 py-1.5 text-sm bg-white">{FONT_WEIGHTS.map(([w, l]) => <option key={w} value={w} disabled={editing.rows.some((x, j) => j !== i && x.style === r.style && x.weight === w)}>{l} ({w})</option>)}</select>
+                                <select aria-label={`سبک ردیف ${i + 1}`} value={r.style || 'normal'} onChange={e => setRow(i, { style: e.target.value })} className="border rounded-lg px-2 py-1.5 text-sm bg-white"><option value="normal">عادی</option><option value="italic">ایتالیک</option></select>
                                 <label className={`flex items-center gap-1.5 text-sm font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-lg px-3 py-1.5 cursor-pointer ${upIdx === i ? 'opacity-50' : ''}`}><Icon name="UploadCloud" className="w-4 h-4" /> {upIdx === i ? 'در حال آپلود…' : r.url ? 'تعویض فایل' : 'آپلود فایل'}<input type="file" accept=".ttf,.otf,.woff,.woff2" className="hidden" disabled={upIdx === i} onChange={e => upload(i, e)} /></label>
                                 <span className="text-xs text-slate-500 truncate flex-1 min-w-0" dir="ltr">{r.url ? r.url.split('/').pop() : 'فایلی انتخاب نشده'}</span>
-                                {editing.rows.length > 1 && <button type="button" aria-label={`حذف وزن ${r.weight}`} onClick={() => removeRow(i)} className="text-red-600 hover:bg-red-50 rounded-lg p-1.5"><Icon name="Trash2" className="w-4 h-4" /></button>}
+                                {editing.rows.length > 1 && <button type="button" aria-label={`حذف وزن ${r.weight}${r.style === 'italic' ? ' ایتالیک' : ''}`} onClick={() => removeRow(i)} className="text-red-600 hover:bg-red-50 rounded-lg p-1.5"><Icon name="Trash2" className="w-4 h-4" /></button>}
                             </div>))}
-                        {editing.rows.length < 9 && <button type="button" onClick={addRow} className="text-sm font-bold text-indigo-700 flex items-center gap-1"><Icon name="Plus" className="w-4 h-4" /> افزودن وزن دیگر</button>}
+                        {editing.rows.length < 18 && <div className="flex gap-4 flex-wrap"><button type="button" onClick={() => addRow('normal')} className="text-sm font-bold text-indigo-700 flex items-center gap-1"><Icon name="Plus" className="w-4 h-4" /> افزودن وزن دیگر</button><button type="button" onClick={() => addRow('italic')} className="text-sm font-bold text-indigo-700 flex items-center gap-1"><Icon name="Plus" className="w-4 h-4" /> افزودن نسخه‌ی ایتالیک</button></div>}
                     </div>
                     <p className="text-[11px] text-slate-500">فایل TTF، OTF، WOFF یا WOFF2 (حداکثر ۱۰ مگابایت). بعد از ذخیره، در «مدیریت فونت» هر فیلد، علاوه بر نام فونت، وزن آن را هم انتخاب می‌کنید.</p>
                     <div className="flex gap-2"><button type="button" onClick={save} disabled={busy || upIdx >= 0} className="btn-grad px-5 py-2 rounded-xl font-bold disabled:opacity-50">{busy ? 'در حال ذخیره…' : 'ذخیره'}</button><button type="button" onClick={() => (startNew ? onClose() : setEditing(null))} className="px-4 py-2 rounded-xl font-bold text-slate-600 hover:bg-slate-100">انصراف</button></div>
@@ -1932,7 +1934,7 @@ function FontsManagerModal({ onClose, fetchGlobalFonts, startNew = false }) {
                     <table className="w-full text-right bg-white rounded-2xl border"><thead className="bg-slate-50 border-b"><tr><th className="p-4">خانواده‌ی فونت</th><th className="p-4">وزن‌ها</th><th className="p-4 text-center">عملیات</th></tr></thead>
                         <tbody className="divide-y">{loading ? <tr><td colSpan="3" className="text-center p-8">بارگذاری...</td></tr> : families.length === 0 ? <tr><td colSpan="3" className="text-center p-8 text-slate-500">هنوز فونتی اضافه نشده است.</td></tr> : families.map(fam => (
                             <tr key={fam.name} className="hover:bg-slate-50"><td className="p-4 font-bold" dir="ltr"><span className="text-lg" style={{ fontFamily: `"${fam.name}", sans-serif`, fontWeight: fam.rows[0].font_weight }}>{fam.name} — نمونه متن ۱۲۳</span></td>
-                                <td className="p-4"><div className="flex flex-wrap gap-1">{fam.rows.map(r => <span key={r.id} className="text-[11px] font-bold bg-indigo-50 text-indigo-800 rounded-full px-2 py-0.5">{(FONT_WEIGHTS.find(x => x[0] === r.font_weight) || ['', ''])[1]} ({r.font_weight})</span>)}</div></td>
+                                <td className="p-4"><div className="flex flex-wrap gap-1">{fam.rows.map(r => <span key={r.id} className="text-[11px] font-bold bg-indigo-50 text-indigo-800 rounded-full px-2 py-0.5">{(FONT_WEIGHTS.find(x => x[0] === r.font_weight) || ['', ''])[1]} ({r.font_weight}){r.font_style === 'italic' ? ' · ایتالیک' : ''}</span>)}</div></td>
                                 <td className="p-4"><div className="flex justify-center gap-2"><button type="button" onClick={() => startEdit(fam)} aria-label={`ویرایش ${fam.name}`} className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Icon name="Edit2" className="w-4 h-4" /></button><button type="button" onClick={() => deleteFamily(fam)} aria-label={`حذف ${fam.name}`} className="p-2 bg-red-50 text-red-600 rounded-lg"><Icon name="Trash2" className="w-4 h-4" /></button></div></td></tr>))}</tbody></table></div>
             )}
         </ModalShell>
@@ -2011,8 +2013,14 @@ function SystemEntry({ mode, tenant, t, langControl, onSuperAdmin, onTenantLogin
         }
     };
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen p-4"><div className="glass-strong p-8 rounded-3xl w-full max-w-md relative overflow-hidden flex flex-col"><div className="relative z-10 flex-1 flex flex-col"><div className="flex justify-between items-center text-slate-600 mb-2"><ThemeToggle t={t} compact />{langControl && <LanguageSwitcher control={langControl} />}</div><div className="flex justify-center mb-6"><LogoImg src={tenant && tenant.logoUrl} srcDark={tenant && tenant.logoUrlDark} alt="Logo" fallbackText={tenant ? tenantText(tenant, 'orgName', t.lang) : ''} className="h-20 object-contain drop-shadow-md" /></div>{tenant && tenant.closedReason && <div role="alert" className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm text-center">{tenant.closedReason}</div>}<h1 className="text-2xl font-bold text-center text-slate-800 mb-2">{tenant ? tenantText(tenant, 'orgName', t.lang) : plat.name}</h1><p className="text-center text-slate-600 mb-8 text-sm">{tenant ? (tenantText(tenant, 'welcomeText', t.lang) || t('enter_passcode')) : t('enter_passcode')}</p><form onSubmit={handleLogin} className="space-y-4 mb-4"><div><label htmlFor="gate-pass" className="block text-sm font-bold text-slate-700 mb-1.5 text-center">{String(t('passcode')).replace(/[….]+$/, '')}</label><input id="gate-pass" type="password" aria-label={t('passcode')} value={passcode} onChange={(e) => { setPasscode(e.target.value); setError(''); }} autoComplete="current-password" className="w-full px-4 py-3 bg-white/70 border border-white rounded-xl text-slate-800 text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder={t('passcode')} autoFocus /></div>{error && <p role="alert" className="text-red-600 text-sm text-center">{error}</p>}{lockLeft > 0 && <p role="status" className="text-amber-700 text-sm text-center font-bold">{t('locked_wait', fmtLeft(lockLeft))}</p>}<button type="submit" disabled={busy || !passcode || lockLeft > 0} className="w-full btn-grad py-3 rounded-xl font-bold transition-all">{busy ? t('processing') : t('login')}</button></form><div className="mt-auto pt-6 border-t border-white/60"><BrandingFooter /></div></div></div></div>
+        <div className="flex flex-col items-center justify-center min-h-screen p-4"><div className="glass-strong p-8 rounded-3xl w-full max-w-md relative overflow-hidden flex flex-col"><div className="relative z-10 flex-1 flex flex-col"><div className="flex justify-between items-center text-slate-600 mb-2"><ThemeToggle t={t} compact />{langControl && <LanguageSwitcher control={langControl} />}</div><div className="flex justify-center mb-6"><LogoImg src={tenant && tenant.logoUrl} srcDark={tenant && tenant.logoUrlDark} alt="Logo" fallbackText={tenant ? tenantText(tenant, 'orgName', t.lang) : ''} className="h-20 object-contain drop-shadow-md" /></div>{tenant && tenant.closedReason && <div role="alert" className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm text-center">{tenant.closedReason}</div>}<h1 className="text-2xl font-bold text-center text-slate-800 mb-2">{tenant ? tenantText(tenant, 'orgName', t.lang) : plat.name}</h1><p className="text-center text-slate-600 mb-8 text-sm">{tenant ? (tenantText(tenant, 'welcomeText', t.lang) || t('enter_passcode')) : t('enter_passcode')}</p><form onSubmit={handleLogin} className="space-y-4 mb-4"><div><label htmlFor="gate-pass" className="block text-sm font-bold text-slate-700 mb-1.5 text-center">{String(t('passcode')).replace(/[….]+$/, '')}</label><PasswordInput id="gate-pass" aria-label={t('passcode')} value={passcode} onChange={(e) => { setPasscode(e.target.value); setError(''); }} autoComplete="current-password" className="w-full px-4 py-3 bg-white/70 border border-white rounded-xl text-slate-800 text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder={t('passcode')} autoFocus /></div>{error && <p role="alert" className="text-red-600 text-sm text-center">{error}</p>}{lockLeft > 0 && <p role="status" className="text-amber-700 text-sm text-center font-bold">{t('locked_wait', fmtLeft(lockLeft))}</p>}<button type="submit" disabled={busy || !passcode || lockLeft > 0} className="w-full btn-grad py-3 rounded-xl font-bold transition-all">{busy ? t('processing') : t('login')}</button></form><div className="mt-auto pt-6 border-t border-white/60"><BrandingFooter /></div></div></div></div>
     );
+}
+
+/** فیلد رمز با دکمه‌ی چشم برای نمایش/پنهان کردن. */
+function PasswordInput({ className = '', ...props }) {
+    const [show, setShow] = useState(false);
+    return (<div className="relative"><input {...props} type={show ? 'text' : 'password'} className={`${className} pe-11`} /><button type="button" tabIndex={-1} onClick={() => setShow(v => !v)} aria-label={show ? 'پنهان کردن رمز' : 'نمایش رمز'} aria-pressed={show} title={show ? 'پنهان کردن رمز' : 'نمایش رمز'} className="absolute inset-y-0 end-2 my-auto w-8 h-8 inline-flex items-center justify-center rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-slate-100"><Icon name={show ? 'EyeOff' : 'Eye'} className="w-4 h-4" /></button></div>);
 }
 
 /** صفحه‌ی انتخاب بعد از ورود به یک گروه: کارت‌ها و بنرهای عضو؛ با کلیک روی هرکدام فرم ساخت همان باز می‌شود. */
@@ -2083,7 +2091,7 @@ function GroupsManagerModal({ tenants, onClose }) {
             {edit && (<div className="space-y-4">
                 <div><label htmlFor="grp-name" className="text-sm font-bold block mb-1">نام گروه</label><input id="grp-name" value={edit.name} onChange={e => setEdit(p => ({ ...p, name: e.target.value }))} className="w-full border border-slate-300 rounded-xl px-3 py-2" />{errors.name && <p role="alert" className="text-red-600 text-xs mt-1">{errors.name}</p>}</div>
                 <div><label htmlFor="grp-slug" className="text-sm font-bold block mb-1">آدرس اختصاصی (اختیاری)</label><input id="grp-slug" dir="ltr" value={edit.slug || ''} onChange={e => setEdit(p => ({ ...p, slug: e.target.value.toLowerCase() }))} placeholder="acme-family" className="w-full border border-slate-300 rounded-xl px-3 py-2 text-left" />{errors.slug && <p role="alert" className="text-red-600 text-xs mt-1">{errors.slug}</p>}</div>
-                <div><label htmlFor="grp-pass" className="text-sm font-bold block mb-1">رمز ورود گروه {edit.id && <span className="text-[11px] font-normal text-slate-500">(خالی = بدون تغییر)</span>}</label><input id="grp-pass" type="password" autoComplete="new-password" value={edit.password} onChange={e => setEdit(p => ({ ...p, password: e.target.value }))} className="w-full border border-slate-300 rounded-xl px-3 py-2" />{errors.password && <p role="alert" className="text-red-600 text-xs mt-1">{errors.password}</p>}<p className="text-[11px] text-slate-500 mt-1">این رمز به کاربر اجازه‌ی ساخت در همه‌ی کارت/بنرهای عضو را می‌دهد. مدیر هر کارت همچنان با رمز مدیر خودش (از لینک همان سازمان) وارد می‌شود.</p></div>
+                <div><label htmlFor="grp-pass" className="text-sm font-bold block mb-1">رمز ورود گروه {edit.id && <span className="text-[11px] font-normal text-slate-500">(خالی = بدون تغییر)</span>}</label><PasswordInput id="grp-pass" autoComplete="new-password" value={edit.password} onChange={e => setEdit(p => ({ ...p, password: e.target.value }))} className="w-full border border-slate-300 rounded-xl px-3 py-2" />{errors.password && <p role="alert" className="text-red-600 text-xs mt-1">{errors.password}</p>}<p className="text-[11px] text-slate-500 mt-1">این رمز به کاربر اجازه‌ی ساخت در همه‌ی کارت/بنرهای عضو را می‌دهد. مدیر هر کارت همچنان با رمز مدیر خودش (از لینک همان سازمان) وارد می‌شود.</p></div>
                 <ImageSettingField id="grp-logo" label="لوگوی گروه" hint="در صفحه‌ی ورود و صفحه‌ی انتخاب نشان داده می‌شود." value={edit.logoUrl || ''} onChange={v => setEdit(p => ({ ...p, logoUrl: v }))} error={errors.logoUrl} maxSize={800} clearLabel="حذف لوگو" />
                 <ImageSettingField id="grp-logo-dark" dark label="لوگوی حالت تیره (اختیاری)" value={edit.logoUrlDark || ''} onChange={v => setEdit(p => ({ ...p, logoUrlDark: v }))} error={errors.logoUrlDark} fallback={(edit.logoUrl || '').trim()} maxSize={800} clearLabel="حذف (استفاده از لوگوی عادی)" />
                 <div><label htmlFor="grp-welcome" className="text-sm font-bold block mb-1">متن خوش‌آمدگویی</label><textarea id="grp-welcome" value={edit.welcomeText} onChange={e => setEdit(p => ({ ...p, welcomeText: e.target.value }))} className="w-full border border-slate-300 rounded-xl p-3 h-24" /></div>
@@ -2247,7 +2255,7 @@ function SuperPasswordForm() {
     const input = (k, label, ac) => (
         <div>
             <label htmlFor={`sp-${k}`} className="text-xs font-bold text-slate-600 block mb-1">{label}</label>
-            <input id={`sp-${k}`} type="password" autoComplete={ac} dir="ltr" value={f[k]} onChange={e => set(k, e.target.value)} className="w-full border rounded-xl px-3 py-2 text-sm bg-white/80" aria-invalid={!!err[k]} aria-describedby={err[k] ? `sp-${k}-err` : undefined} />
+            <PasswordInput id={`sp-${k}`} autoComplete={ac} dir="ltr" value={f[k]} onChange={e => set(k, e.target.value)} className="w-full border rounded-xl px-3 py-2 text-sm bg-white/80" aria-invalid={!!err[k]} aria-describedby={err[k] ? `sp-${k}-err` : undefined} />
             {err[k] && <p id={`sp-${k}-err`} role="alert" className="text-xs text-red-600 mt-1">{err[k]}</p>}
         </div>
     );
@@ -3036,7 +3044,7 @@ function SuperAdminWizard({ initialData, globalFonts, fetchGlobalFonts = () => {
                                     {step === 1 && (<div className="space-y-4">{data.orderId && <div role="note" className="bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-xl p-3 text-sm leading-6"><b>ساخته‌شده از سفارش آنلاین.</b> نام، لوگو، طرح‌ها، فیلدها و قانون تغییر طرح از روی سفارش پر شده است؛ جای فیلدها را روی کارت تنظیم کنید و رمزها را تعیین کنید. با انتشار، لینک سامانه و رمزها برای مشتری پیامک و ایمیل می‌شود.</div>}
                                         <div className="grid lg:grid-cols-2 gap-4 items-start">
                                             <SettingsSection title="هویت سازمان" icon="Building2" hint="نام، زبان و آدرس"><div><label className="text-sm font-bold mb-1 block">نام سازمان</label><input className="w-full border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={data.orgName} onChange={e => setData(p => ({ ...p, orgName: e.target.value }))} /></div><div><label className="text-sm font-bold mb-1 block">زبان پلتفرم</label><select value={data.langCode} onChange={e => setData(p => ({ ...p, langCode: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 outline-none bg-slate-50"><option value="fa">فارسی (Persian)</option><option value="en">English (انگلیسی)</option><option value="ar">العربية (عربی)</option><option value="tr">Türkçe (ترکی)</option></select></div><div id="fieldwrap-slug"><SlugEditor data={data} setData={setData} originalSlug={initialData && initialData.id ? initialData.slug : ''} /></div></SettingsSection>
-                                            <SettingsSection title="رمزهای ورود" icon="Lock" hint="مدیر و کاربران"><div><label className="text-sm font-bold mb-1 block">{t('admin_pass')}</label><input type="password" autoComplete="new-password" placeholder={passPlaceholder('hasAdminPass')} className="w-full border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={data.adminPass} onChange={e => setData(p => ({ ...p, adminPass: e.target.value }))} /></div><div><label className="text-sm font-bold mb-1 block">{t('public_pass')}</label><input type="password" autoComplete="new-password" placeholder={passPlaceholder('hasPublicPass')} className="w-full border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={data.publicPass} onChange={e => setData(p => ({ ...p, publicPass: e.target.value }))} /></div></SettingsSection>
+                                            <SettingsSection title="رمزهای ورود" icon="Lock" hint="مدیر و کاربران"><div><label className="text-sm font-bold mb-1 block">{t('admin_pass')}</label><PasswordInput autoComplete="new-password" placeholder={passPlaceholder('hasAdminPass')} className="w-full border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={data.adminPass} onChange={e => setData(p => ({ ...p, adminPass: e.target.value }))} /></div><div><label className="text-sm font-bold mb-1 block">{t('public_pass')}</label><PasswordInput autoComplete="new-password" placeholder={passPlaceholder('hasPublicPass')} className="w-full border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" value={data.publicPass} onChange={e => setData(p => ({ ...p, publicPass: e.target.value }))} /></div></SettingsSection>
                                             <SettingsSection title="قالب خروجی و ابعاد" icon="IdCard"><OutputFormatEditor data={data} setData={setData} dims={sideDims} /><FileNameEditor data={data} setData={setData} /></SettingsSection>
                                             <SettingsSection title="تنظیمات سازمان" icon="Settings"><TenantSettingsEditor data={data} setData={setData} /></SettingsSection>
                                         </div>
@@ -3348,7 +3356,7 @@ function TenantDashboard({ tenant, t, lang, langControl, globalValidations, onLo
 
     return (
         <div className="min-h-screen p-4 md:p-8 flex flex-col relative">
-            {showSettings && (<div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4"><div role="dialog" aria-modal="true" aria-label={t('settings_panel')} className="glass-strong rounded-3xl p-8 w-full max-w-md"><h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-indigo-900"><Icon name="Settings" /> {t('settings_panel')}</h3>{settingsError && <div role="alert" className="bg-red-100 text-red-700 p-3 rounded-xl text-sm border border-red-200 mb-4">{settingsError}</div>}<div className="space-y-4"><div><label htmlFor="np-admin" className="block text-sm font-bold text-slate-700 mb-2">{t('new_admin_pass')}</label><input id="np-admin" type="password" autoComplete="new-password" placeholder={t('pass_keep_hint')} value={passwords.adminPass} onChange={e => setPasswords({ ...passwords, adminPass: e.target.value })} className="w-full border rounded-xl px-4 py-3" /></div><div><label htmlFor="np-public" className="block text-sm font-bold text-slate-700 mb-2">{t('new_public_pass')}</label><input id="np-public" type="password" autoComplete="new-password" placeholder={t('pass_keep_hint')} value={passwords.publicPass} onChange={e => setPasswords({ ...passwords, publicPass: e.target.value })} className="w-full border rounded-xl px-4 py-3" /></div></div><div className="flex gap-3 mt-8"><button onClick={() => { setShowSettings(false); setSettingsError(''); setPasswords({ adminPass: '', publicPass: '' }); }} className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl">{t('cancel')}</button><button onClick={saveSettings} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-md">{t('save_changes')}</button></div></div></div>)}
+            {showSettings && (<div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4"><div role="dialog" aria-modal="true" aria-label={t('settings_panel')} className="glass-strong rounded-3xl p-8 w-full max-w-md"><h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-indigo-900"><Icon name="Settings" /> {t('settings_panel')}</h3>{settingsError && <div role="alert" className="bg-red-100 text-red-700 p-3 rounded-xl text-sm border border-red-200 mb-4">{settingsError}</div>}<div className="space-y-4"><div><label htmlFor="np-admin" className="block text-sm font-bold text-slate-700 mb-2">{t('new_admin_pass')}</label><PasswordInput id="np-admin" autoComplete="new-password" placeholder={t('pass_keep_hint')} value={passwords.adminPass} onChange={e => setPasswords({ ...passwords, adminPass: e.target.value })} className="w-full border rounded-xl px-4 py-3" /></div><div><label htmlFor="np-public" className="block text-sm font-bold text-slate-700 mb-2">{t('new_public_pass')}</label><PasswordInput id="np-public" autoComplete="new-password" placeholder={t('pass_keep_hint')} value={passwords.publicPass} onChange={e => setPasswords({ ...passwords, publicPass: e.target.value })} className="w-full border rounded-xl px-4 py-3" /></div></div><div className="flex gap-3 mt-8"><button onClick={() => { setShowSettings(false); setSettingsError(''); setPasswords({ adminPass: '', publicPass: '' }); }} className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl">{t('cancel')}</button><button onClick={saveSettings} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-md">{t('save_changes')}</button></div></div></div>)}
             {editingCard && <AdminCardEditModal tenant={tenant} card={editingCard} onClose={() => setEditingCard(null)} onSave={(updatedCard) => { setCards(prev => prev.map(c => c.id === updatedCard.id ? lightenCard({ ...c, ...updatedCard }) : c)); setEditingCard(null); notifySuccess(t('success_save')); }} t={t} globalValidations={globalValidations} />}
             {previewCard && <CardPreviewModal tenant={tenant} card={previewCard} t={t} onClose={() => setPreviewCard(null)} />}
             {showAudit && <AuditLogModal tenantId={tenant.id} t={t} lang={lang} onClose={() => setShowAudit(false)} />}

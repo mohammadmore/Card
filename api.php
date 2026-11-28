@@ -121,7 +121,7 @@ try {
     fail('خطا در اتصال به دیتابیس', 500);
 }
 
-const AUX_SCHEMA_VERSION = '4';
+const AUX_SCHEMA_VERSION = '5';
 function ensure_aux_schema(PDO $pdo): void {
     static $done = false; if ($done) return; $done = true;
     // جدول‌های کمکی یک بار ساخته می‌شوند و نسخه‌ی آن در تنظیمات ثبت می‌شود؛ بعد از آن دیگر هر بار CREATE اجرا نمی‌شود
@@ -136,6 +136,8 @@ function ensure_aux_schema(PDO $pdo): void {
     $pdo->exec("CREATE TABLE IF NOT EXISTS otp_codes (mobile VARCHAR(15) PRIMARY KEY, code_hash VARCHAR(255) NOT NULL, expires_at DATETIME NOT NULL, attempts INT NOT NULL DEFAULT 0, sent_at DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $pdo->exec("CREATE TABLE IF NOT EXISTS rate_limits (k CHAR(40) PRIMARY KEY, cnt INT NOT NULL DEFAULT 0, window_start DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $pdo->exec("CREATE TABLE IF NOT EXISTS notify_log (id BIGINT AUTO_INCREMENT PRIMARY KEY, channel VARCHAR(20) NOT NULL, target VARCHAR(190) NOT NULL DEFAULT '', subject VARCHAR(190) NOT NULL DEFAULT '', ok TINYINT NOT NULL DEFAULT 0, error VARCHAR(500) NOT NULL DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // ایتالیک: هر فایل فونت می‌تواند «عادی» یا «ایتالیک» باشد
+    try { if (!$pdo->query("SHOW COLUMNS FROM global_fonts LIKE 'font_style'")->fetch()) $pdo->exec("ALTER TABLE global_fonts ADD COLUMN font_style VARCHAR(10) NOT NULL DEFAULT 'normal'"); } catch (Throwable $e) { error_log('[schema] font_style: ' . $e->getMessage()); }
     // گروه‌ها (خانواده‌ی سازمان‌ها): یک صفحه‌ی ورود مشترک برای چند کارت/بنر
     $pdo->exec("CREATE TABLE IF NOT EXISTS tenant_groups (id VARCHAR(64) PRIMARY KEY, slug VARCHAR(64) NULL, data LONGTEXT NOT NULL, created_at DATETIME NOT NULL, UNIQUE KEY uq_groups_slug (slug)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     // وزن فونت (۱۰۰ تا ۹۰۰): چند فایل با یک نام خانواده و وزن‌های مختلف
@@ -749,7 +751,7 @@ function valid_asset_url(string $url): bool {
 
 function load_fonts(PDO $pdo): array {
     ensure_aux_schema($pdo);
-    $rows = $pdo->query("SELECT id, font_key, font_name, font_url, font_weight FROM global_fonts ORDER BY font_name ASC, font_weight ASC")->fetchAll();
+    $rows = $pdo->query("SELECT id, font_key, font_name, font_url, font_weight, font_style FROM global_fonts ORDER BY font_name ASC, font_style ASC, font_weight ASC")->fetchAll();
     foreach ($rows as &$r) $r['font_weight'] = (int)$r['font_weight'];
     return $rows;
 }
@@ -1325,11 +1327,12 @@ $routes = [
         if (!preg_match('/^[a-z0-9_\-]+$/', $key)) fail('شناسه فونت فقط می‌تواند شامل حروف کوچک انگلیسی، عدد، - و _ باشد.');
         if (!preg_match('/^[\p{L}\p{N} _\-]+$/u', $name)) fail('نام فونت نامعتبر است.');
         if (!valid_asset_url($url)) fail('آدرس فایل فونت نامعتبر است.');
-        $dup = $pdo->prepare("SELECT id FROM global_fonts WHERE font_name = ? AND font_weight = ? AND id <> ?"); $dup->execute([$name, $weight, (int)($input['id'] ?? 0)]);
-        if ($dup->fetch()) fail("برای خانواده‌ی «{$name}» وزن {$weight} قبلاً ثبت شده است.");
+        $style = ($input['font_style'] ?? '') === 'italic' ? 'italic' : 'normal';
+        $dup = $pdo->prepare("SELECT id FROM global_fonts WHERE font_name = ? AND font_weight = ? AND font_style = ? AND id <> ?"); $dup->execute([$name, $weight, $style, (int)($input['id'] ?? 0)]);
+        if ($dup->fetch()) fail("برای خانواده‌ی «{$name}» وزن {$weight} (" . ($style === 'italic' ? 'ایتالیک' : 'عادی') . ") قبلاً ثبت شده است.");
         try {
-            if (!empty($input['id'])) $pdo->prepare("UPDATE global_fonts SET font_key = ?, font_name = ?, font_url = ?, font_weight = ? WHERE id = ?")->execute([$key, $name, $url, $weight, (int)$input['id']]);
-            else $pdo->prepare("INSERT INTO global_fonts (font_key, font_name, font_url, font_weight) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE font_name = VALUES(font_name), font_url = VALUES(font_url), font_weight = VALUES(font_weight)")->execute([$key, $name, $url, $weight]);
+            if (!empty($input['id'])) $pdo->prepare("UPDATE global_fonts SET font_key = ?, font_name = ?, font_url = ?, font_weight = ?, font_style = ? WHERE id = ?")->execute([$key, $name, $url, $weight, $style, (int)$input['id']]);
+            else $pdo->prepare("INSERT INTO global_fonts (font_key, font_name, font_url, font_weight, font_style) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE font_name = VALUES(font_name), font_url = VALUES(font_url), font_weight = VALUES(font_weight), font_style = VALUES(font_style)")->execute([$key, $name, $url, $weight, $style]);
         } catch (PDOException $e) {
             if ($e->getCode() === '23000') fail('این شناسه فونت قبلاً استفاده شده است.');
             throw $e;
